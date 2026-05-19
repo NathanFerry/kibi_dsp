@@ -2,7 +2,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use crossbeam_queue::ArrayQueue;
-use egui_plot::{Line, Plot, PlotPoints};
+use egui_plot::{GridMark, Line, Plot, PlotPoints};
 
 const BUF_SIZE: usize = 4096;
 
@@ -27,9 +27,10 @@ impl Default for Waveform {
 }
 
 /// Reduce `data` to at most `target_points` points using min/max envelope downsampling.
-/// Each chunk emits two points — [i, min] and [i, max] — preserving waveform shape.
+/// Each chunk emits two points — [time_ms, min] and [time_ms, max] — preserving waveform shape.
+/// `display_ms` is the total time span the data represents, used to label the X axis.
 /// Writes into `out` (cleared first; existing allocation is reused).
-fn downsample(data: &[f32], target_points: usize, out: &mut Vec<[f64; 2]>) {
+fn downsample(data: &[f32], target_points: usize, display_ms: f64, out: &mut Vec<[f64; 2]>) {
     out.clear();
     if data.is_empty() || target_points == 0 {
         return;
@@ -37,7 +38,7 @@ fn downsample(data: &[f32], target_points: usize, out: &mut Vec<[f64; 2]>) {
     let chunks = (target_points / 2).max(1);
     let chunk_size = (data.len() / chunks).max(1);
     for (chunk_idx, chunk) in data.chunks(chunk_size).enumerate() {
-        let x = chunk_idx as f64;
+        let x = chunk_idx as f64 * (display_ms / chunks as f64);
         let min = chunk.iter().cloned().fold(f32::INFINITY, f32::min) as f64;
         let max = chunk.iter().cloned().fold(f32::NEG_INFINITY, f32::max) as f64;
         out.push([x, min]);
@@ -67,7 +68,7 @@ impl Waveform {
         let half = display / 2;
         let start = pos.saturating_sub(half);
         let end = (start + display).min(samples.len());
-        downsample(&samples[start..end], 512, &mut self.orig_points_buf);
+        downsample(&samples[start..end], 512, 100.0, &mut self.orig_points_buf);
 
         // Processed: unwrap the ring buffer into scratch, then downsample.
         let n = display;
@@ -79,25 +80,47 @@ impl Waveform {
             self.scratch[..first].copy_from_slice(&self.processed_buf[ring_start..]);
             self.scratch[first..n].copy_from_slice(&self.processed_buf[..n - first]);
         }
-        downsample(&self.scratch[..n], 512, &mut self.proc_points_buf);
+        downsample(&self.scratch[..n], 512, 100.0, &mut self.proc_points_buf);
 
         // PlotPoints requires ownership; clone the filled slice (≤ 512 × 16 bytes).
         let orig_points = PlotPoints::new(self.orig_points_buf.clone());
         let proc_points = PlotPoints::new(self.proc_points_buf.clone());
 
         ui.columns(2, |cols| {
+            cols[0].label("Original");
             Plot::new("waveform_original")
                 .height(150.0)
                 .include_y(-1.0)
                 .include_y(1.0)
+                .x_axis_label("Time (ms)")
+                .y_axis_label("Amplitude")
+                .show_axes([true, true])
+                .show_grid([true, true])
+                .y_grid_spacer(|_input| {
+                    [-1.0_f64, -0.5, 0.0, 0.5, 1.0]
+                        .iter()
+                        .map(|&v| GridMark { value: v, step_size: 0.5 })
+                        .collect()
+                })
                 .label_formatter(|_, _| String::new())
                 .show(&mut cols[0], |plot_ui| {
                     plot_ui.line(Line::new("Original", orig_points));
                 });
+            cols[1].label("Processed");
             Plot::new("waveform_processed")
                 .height(150.0)
                 .include_y(-1.0)
                 .include_y(1.0)
+                .x_axis_label("Time (ms)")
+                .y_axis_label("Amplitude")
+                .show_axes([true, true])
+                .show_grid([true, true])
+                .y_grid_spacer(|_input| {
+                    [-1.0_f64, -0.5, 0.0, 0.5, 1.0]
+                        .iter()
+                        .map(|&v| GridMark { value: v, step_size: 0.5 })
+                        .collect()
+                })
                 .label_formatter(|_, _| String::new())
                 .show(&mut cols[1], |plot_ui| {
                     plot_ui.line(Line::new("Processed", proc_points));

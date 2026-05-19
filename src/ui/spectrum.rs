@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use crossbeam_queue::ArrayQueue;
-use egui_plot::{Line, Plot, PlotPoints};
+use egui_plot::{GridMark, Line, Plot, PlotPoints};
 use rustfft::{Fft, FftPlanner, num_complex::Complex};
 
 const FFT_SIZE: usize = 2048;
@@ -112,6 +112,21 @@ impl Spectrum {
             .include_y(0.0)
             .include_y(-120.0)
             .include_x(0.0)
+            .x_axis_label("Frequency (Hz)")
+            .y_axis_label("dBFS")
+            .show_axes([true, true])
+            .show_grid([true, true])
+            .x_grid_spacer(|_input| {
+                [20.0, 50.0, 100.0, 200.0, 500.0, 1000.0, 2000.0, 5000.0, 10000.0, 20000.0]
+                    .iter()
+                    .map(|&v| GridMark { value: v, step_size: v })
+                    .collect()
+            })
+            .y_grid_spacer(|_input| {
+                (-6..=0)
+                    .map(|i| GridMark { value: i as f64 * 20.0, step_size: 20.0 })
+                    .collect()
+            })
             .label_formatter(|name, v| {
                 if name.is_empty() {
                     String::new()
