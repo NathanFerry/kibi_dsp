@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
-use anyhow::{Context, Result, bail};
+use anyhow::{Context, Result};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{FromSample, SampleFormat, SizedSample, Stream};
 use crossbeam_channel::{Receiver, Sender};
@@ -29,7 +29,6 @@ impl Player {
             .context("no default audio output device")?;
 
         let output_config = select_output_config(&device, sample_rate)?;
-        let sample_format = output_config.sample_format();
         let stream_config: cpal::StreamConfig = output_config.into();
 
         let (param_tx, param_rx) = crossbeam_channel::unbounded::<ParamUpdate>();
@@ -40,49 +39,16 @@ impl Player {
         let chain = ProcessorChain::new();
         let sample_count = samples.len();
 
-        let stream = match sample_format {
-            SampleFormat::F32 => build_stream::<f32>(
-                &device,
-                &stream_config,
-                param_rx,
-                Arc::clone(&fft_queue),
-                chain,
-                Arc::clone(&samples),
-                Arc::clone(&cursor),
-                Arc::clone(&playing),
-            )?,
-            SampleFormat::I16 => build_stream::<i16>(
-                &device,
-                &stream_config,
-                param_rx,
-                Arc::clone(&fft_queue),
-                chain,
-                Arc::clone(&samples),
-                Arc::clone(&cursor),
-                Arc::clone(&playing),
-            )?,
-            SampleFormat::I32 => build_stream::<i32>(
-                &device,
-                &stream_config,
-                param_rx,
-                Arc::clone(&fft_queue),
-                chain,
-                Arc::clone(&samples),
-                Arc::clone(&cursor),
-                Arc::clone(&playing),
-            )?,
-            SampleFormat::F64 => build_stream::<f64>(
-                &device,
-                &stream_config,
-                param_rx,
-                Arc::clone(&fft_queue),
-                chain,
-                Arc::clone(&samples),
-                Arc::clone(&cursor),
-                Arc::clone(&playing),
-            )?,
-            fmt => bail!("unsupported sample format: {fmt:?}"),
-        };
+        let stream = build_stream::<f32>(
+            &device,
+            &stream_config,
+            param_rx,
+            Arc::clone(&fft_queue),
+            chain,
+            Arc::clone(&samples),
+            Arc::clone(&cursor),
+            Arc::clone(&playing),
+        )?;
 
         stream.play()?;
 
@@ -102,19 +68,32 @@ fn select_output_config(
     device: &cpal::Device,
     preferred_rate: u32,
 ) -> Result<cpal::SupportedStreamConfig> {
+    // Prefer F32 at the file's sample rate so cpal never needs to convert the sample type.
     if let Ok(configs) = device.supported_output_configs() {
         for config in configs {
-            if config.min_sample_rate() <= preferred_rate
+            if config.sample_format() == SampleFormat::F32
+                && config.min_sample_rate() <= preferred_rate
                 && preferred_rate <= config.max_sample_rate()
             {
                 return Ok(config.with_sample_rate(preferred_rate));
             }
         }
     }
-    log::warn!(
-        "device does not support {}Hz; falling back to device default (audio may be pitch-shifted)",
-        preferred_rate
-    );
+
+    // F32 at any supported rate (pitch may differ from source).
+    if let Ok(configs) = device.supported_output_configs() {
+        for config in configs {
+            if config.sample_format() == SampleFormat::F32 {
+                let rate = preferred_rate
+                    .max(config.min_sample_rate())
+                    .min(config.max_sample_rate());
+                return Ok(config.with_sample_rate(rate));
+            }
+        }
+    }
+
+    // Last resort: device default — cpal will convert f32 callback samples to whatever the device needs.
+    log::warn!("no F32 output config found; using device default");
     device
         .default_output_config()
         .context("no default output config")
