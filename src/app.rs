@@ -2,8 +2,10 @@ use std::sync::Arc;
 
 use crate::audio::decoder::decode_audio_file;
 use crate::audio::player::Player;
-use crate::dsp::chain::ProcessorChain;
+use crate::dsp::chain::{ChainCommand, ProcessorChain};
+use crate::dsp::processors::make_processor;
 use crate::ui::bode::BodeView;
+use crate::ui::chain_editor::ChainEditor;
 use crate::ui::controls::Controls;
 use crate::ui::spectrum::Spectrum;
 use crate::ui::toolbar::Toolbar;
@@ -15,12 +17,10 @@ pub struct DspApp {
     file_name: Option<String>,
     error_msg: Option<String>,
     toolbar: Toolbar,
+    chain_editor: ChainEditor,
     controls: Controls,
     waveform: Waveform,
     spectrum: Spectrum,
-    /// Shadow chain that lives on the UI thread.
-    /// Mirrors the audio chain's processor state so we can query transfer functions
-    /// without touching the audio thread.
     ui_chain: Option<ProcessorChain>,
     bode: BodeView,
 }
@@ -65,7 +65,6 @@ impl eframe::App for DspApp {
             ui.colored_label(egui::Color32::RED, err);
         }
 
-        // Extract all player handles before any mutable widget calls.
         let player_data = self.player.as_ref().map(|p| {
             (
                 Arc::clone(&p.samples),
@@ -75,6 +74,7 @@ impl eframe::App for DspApp {
                 Arc::clone(&p.orig_queue),
                 Arc::clone(&p.fft_queue),
                 p.param_tx.clone(),
+                p.chain_cmd_tx.clone(),
                 p.playing.load(std::sync::atomic::Ordering::Relaxed),
             )
         });
@@ -87,9 +87,42 @@ impl eframe::App for DspApp {
             orig_queue,
             fft_queue,
             param_tx,
+            chain_cmd_tx,
             is_playing,
         )) = player_data
         {
+            // Chain editor: add / remove processors.
+            let current_names = self.controls.processor_names();
+            let editor_out = self.chain_editor.show(ui, &current_names);
+            ui.separator();
+
+            if let Some(name) = editor_out.add_name {
+                let sr = sample_rate as f32;
+                if let Some(proc_audio) = make_processor(&name, sr) {
+                    let _ = chain_cmd_tx.send(ChainCommand::Add(proc_audio));
+                }
+                if let Some(proc_ui) = make_processor(&name, sr) {
+                    if let Some(chain) = &mut self.ui_chain {
+                        let idx = chain.processors().len();
+                        chain.add(proc_ui);
+                        // Push into controls using the just-added processor.
+                        if let Some(p) = chain.processors().get(idx) {
+                            self.controls.push_processor(p.as_ref());
+                        }
+                    }
+                    self.bode.mark_dirty();
+                }
+            }
+
+            if let Some(idx) = editor_out.remove_idx {
+                let _ = chain_cmd_tx.send(ChainCommand::Remove(idx));
+                if let Some(chain) = &mut self.ui_chain {
+                    chain.remove(idx);
+                }
+                self.controls.remove_processor(idx);
+                self.bode.mark_dirty();
+            }
+
             ui.add_space(4.0);
             self.waveform
                 .show(ui, &samples, &cursor, sample_rate, &waveform_queue);
@@ -97,10 +130,8 @@ impl eframe::App for DspApp {
             self.spectrum.show(ui, &orig_queue, &fft_queue, sample_rate);
             ui.separator();
 
-            // Controls: collect param changes and selection.
             let ctrl_out = self.controls.show(ui);
 
-            // Forward param changes to the audio thread and to the UI shadow chain.
             for update in &ctrl_out.updates {
                 let _ = param_tx.send(update.clone());
                 if let Some(chain) = &mut self.ui_chain {
@@ -112,7 +143,6 @@ impl eframe::App for DspApp {
                 self.bode.mark_dirty();
             }
 
-            // Query the selected processor's transfer function from the shadow chain.
             let selected = ctrl_out.selected_proc;
             let tf_owned: Option<(Vec<f32>, Vec<f32>)> = self
                 .ui_chain
@@ -120,7 +150,6 @@ impl eframe::App for DspApp {
                 .and_then(|chain| chain.processors().get(selected))
                 .and_then(|p| p.transfer_function());
 
-            // First param value of the selected processor (cutoff frequency marker).
             let cutoff_hz = self.controls.selected_cutoff_hz();
 
             ui.separator();

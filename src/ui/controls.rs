@@ -1,4 +1,5 @@
 use crate::dsp::chain::{ParamUpdate, ProcessorChain};
+use crate::dsp::processor::Processor;
 
 pub struct ParamState {
     pub name: &'static str,
@@ -31,31 +32,33 @@ impl Controls {
             processors: chain
                 .processors()
                 .iter()
-                .map(|p| ProcessorState {
-                    name: p.name().to_string(),
-                    params: p
-                        .params()
-                        .iter()
-                        .map(|pp| ParamState {
-                            name: pp.name,
-                            value: pp.default,
-                            min: pp.min,
-                            max: pp.max,
-                            unit: pp.unit,
-                        })
-                        .collect(),
-                })
+                .map(|p| processor_state_from(p.as_ref()))
                 .collect(),
             selected_proc: 0,
         }
+    }
+
+    pub fn push_processor(&mut self, p: &dyn Processor) {
+        self.processors.push(processor_state_from(p));
+    }
+
+    pub fn remove_processor(&mut self, index: usize) {
+        if index < self.processors.len() {
+            self.processors.remove(index);
+            if self.selected_proc >= self.processors.len() && !self.processors.is_empty() {
+                self.selected_proc = self.processors.len() - 1;
+            }
+        }
+    }
+
+    pub fn processor_names(&self) -> Vec<String> {
+        self.processors.iter().map(|p| p.name.clone()).collect()
     }
 
     pub fn selected_proc(&self) -> usize {
         self.selected_proc
     }
 
-    /// Return the current value of the first parameter of the selected processor,
-    /// used as the cutoff-frequency marker in the Bode plot.
     pub fn selected_cutoff_hz(&self) -> Option<f32> {
         self.processors
             .get(self.selected_proc)?
@@ -71,7 +74,6 @@ impl Controls {
         for (proc_idx, proc) in self.processors.iter_mut().enumerate() {
             let is_selected = self.selected_proc == proc_idx;
 
-            // Clickable header — clicking selects this processor for the Bode plot.
             let header = egui::RichText::new(proc.name.as_str()).strong();
             if ui.selectable_label(is_selected, header).clicked() {
                 self.selected_proc = proc_idx;
@@ -96,5 +98,22 @@ impl Controls {
             selected_proc: self.selected_proc,
             selection_changed: self.selected_proc != prev_selected,
         }
+    }
+}
+
+fn processor_state_from(p: &dyn Processor) -> ProcessorState {
+    ProcessorState {
+        name: p.name().to_string(),
+        params: p
+            .params()
+            .iter()
+            .map(|pp| ParamState {
+                name: pp.name,
+                value: pp.default,
+                min: pp.min,
+                max: pp.max,
+                unit: pp.unit,
+            })
+            .collect(),
     }
 }

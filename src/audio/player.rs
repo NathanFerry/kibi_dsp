@@ -7,7 +7,7 @@ use cpal::{FromSample, SampleFormat, SizedSample, Stream};
 use crossbeam_channel::{Receiver, Sender};
 use crossbeam_queue::ArrayQueue;
 
-use crate::dsp::chain::{ParamUpdate, ProcessorChain};
+use crate::dsp::chain::{ChainCommand, ParamUpdate, ProcessorChain};
 
 pub const FFT_QUEUE_SIZE: usize = 8192;
 pub const WAVEFORM_QUEUE_SIZE: usize = 4096;
@@ -17,6 +17,7 @@ pub struct Player {
     _stream: Stream,
     pub samples: Arc<Vec<f32>>,
     pub param_tx: Sender<ParamUpdate>,
+    pub chain_cmd_tx: Sender<ChainCommand>,
     pub fft_queue: Arc<ArrayQueue<f32>>,
     pub orig_queue: Arc<ArrayQueue<f32>>,
     pub waveform_queue: Arc<ArrayQueue<f32>>,
@@ -38,6 +39,7 @@ impl Player {
         let stream_config: cpal::StreamConfig = output_config.into();
 
         let (param_tx, param_rx) = crossbeam_channel::unbounded::<ParamUpdate>();
+        let (chain_cmd_tx, chain_cmd_rx) = crossbeam_channel::unbounded::<ChainCommand>();
         let fft_queue = Arc::new(ArrayQueue::<f32>::new(FFT_QUEUE_SIZE));
         let orig_queue = Arc::new(ArrayQueue::<f32>::new(ORIG_QUEUE_SIZE));
         let waveform_queue = Arc::new(ArrayQueue::<f32>::new(WAVEFORM_QUEUE_SIZE));
@@ -50,6 +52,7 @@ impl Player {
             &device,
             &stream_config,
             param_rx,
+            chain_cmd_rx,
             Arc::clone(&fft_queue),
             Arc::clone(&orig_queue),
             Arc::clone(&waveform_queue),
@@ -66,6 +69,7 @@ impl Player {
             _stream: stream,
             samples,
             param_tx,
+            chain_cmd_tx,
             fft_queue,
             orig_queue,
             waveform_queue,
@@ -115,6 +119,7 @@ fn build_stream<T: SizedSample + FromSample<f32>>(
     device: &cpal::Device,
     config: &cpal::StreamConfig,
     param_rx: Receiver<ParamUpdate>,
+    chain_cmd_rx: Receiver<ChainCommand>,
     fft_queue: Arc<ArrayQueue<f32>>,
     orig_queue: Arc<ArrayQueue<f32>>,
     waveform_queue: Arc<ArrayQueue<f32>>,
@@ -131,6 +136,9 @@ fn build_stream<T: SizedSample + FromSample<f32>>(
         move |data: &mut [T], _| {
             if reset_requested.swap(false, Ordering::Relaxed) {
                 chain.reset();
+            }
+            while let Ok(cmd) = chain_cmd_rx.try_recv() {
+                chain.apply_command(cmd);
             }
             while let Ok(update) = param_rx.try_recv() {
                 chain.apply_update(update);
