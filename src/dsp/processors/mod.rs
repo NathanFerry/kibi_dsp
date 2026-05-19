@@ -3,6 +3,7 @@ pub mod biquad;
 pub mod butterworth;
 pub mod cauer;
 pub mod chebyshev;
+pub mod delay;
 pub mod fir;
 pub mod gain;
 pub mod moving_average;
@@ -11,6 +12,7 @@ pub mod notch;
 use crate::dsp::processor::Processor;
 use biquad::Biquad;
 use butterworth::Butterworth;
+use delay::Delay;
 use fir::{FirHighPass, FirLowPass};
 use gain::Gain;
 use moving_average::MovingAverage;
@@ -24,6 +26,7 @@ pub const PROCESSOR_NAMES: &[&str] = &[
     "Biquad",
     "Notch",
     "Gain",
+    "Delay",
 ];
 
 pub fn make_processor(name: &str, sample_rate: f32) -> Option<Box<dyn Processor>> {
@@ -35,6 +38,7 @@ pub fn make_processor(name: &str, sample_rate: f32) -> Option<Box<dyn Processor>
         "Biquad" => Some(Box::new(Biquad::new(sample_rate))),
         "Notch" => Some(Box::new(Notch::new(sample_rate))),
         "Gain" => Some(Box::new(Gain::new())),
+        "Delay" => Some(Box::new(Delay::new(sample_rate))),
         _ => None,
     }
 }
