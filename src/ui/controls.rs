@@ -1,5 +1,3 @@
-use crossbeam_channel::Sender;
-
 use crate::dsp::chain::{ParamUpdate, ProcessorChain};
 
 pub struct ParamState {
@@ -15,9 +13,16 @@ pub struct ProcessorState {
     pub params: Vec<ParamState>,
 }
 
+pub struct ControlsOutput {
+    pub updates: Vec<ParamUpdate>,
+    pub selected_proc: usize,
+    pub selection_changed: bool,
+}
+
 #[derive(Default)]
 pub struct Controls {
     processors: Vec<ProcessorState>,
+    selected_proc: usize,
 }
 
 impl Controls {
@@ -41,26 +46,55 @@ impl Controls {
                         .collect(),
                 })
                 .collect(),
+            selected_proc: 0,
         }
     }
 
-    pub fn show(&mut self, ui: &mut egui::Ui, param_tx: Option<&Sender<ParamUpdate>>) {
+    pub fn selected_proc(&self) -> usize {
+        self.selected_proc
+    }
+
+    /// Return the current value of the first parameter of the selected processor,
+    /// used as the cutoff-frequency marker in the Bode plot.
+    pub fn selected_cutoff_hz(&self) -> Option<f32> {
+        self.processors
+            .get(self.selected_proc)?
+            .params
+            .first()
+            .map(|p| p.value)
+    }
+
+    pub fn show(&mut self, ui: &mut egui::Ui) -> ControlsOutput {
+        let prev_selected = self.selected_proc;
+        let mut updates = Vec::new();
+
         for (proc_idx, proc) in self.processors.iter_mut().enumerate() {
-            ui.label(egui::RichText::new(proc.name.as_str()).strong());
+            let is_selected = self.selected_proc == proc_idx;
+
+            // Clickable header — clicking selects this processor for the Bode plot.
+            let header = egui::RichText::new(proc.name.as_str()).strong();
+            if ui.selectable_label(is_selected, header).clicked() {
+                self.selected_proc = proc_idx;
+            }
+
             for (param_idx, param) in proc.params.iter_mut().enumerate() {
                 let label = format!("{} ({})", param.name, param.unit);
                 let r =
                     ui.add(egui::Slider::new(&mut param.value, param.min..=param.max).text(label));
-                if r.changed()
-                    && let Some(tx) = param_tx
-                {
-                    let _ = tx.send(ParamUpdate {
+                if r.changed() {
+                    updates.push(ParamUpdate {
                         processor_idx: proc_idx,
                         param_idx,
                         value: param.value,
                     });
                 }
             }
+        }
+
+        ControlsOutput {
+            updates,
+            selected_proc: self.selected_proc,
+            selection_changed: self.selected_proc != prev_selected,
         }
     }
 }

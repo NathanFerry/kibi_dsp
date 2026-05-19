@@ -99,7 +99,10 @@ impl Waveform {
                 .y_grid_spacer(|_input| {
                     [-1.0_f64, -0.5, 0.0, 0.5, 1.0]
                         .iter()
-                        .map(|&v| GridMark { value: v, step_size: 0.5 })
+                        .map(|&v| GridMark {
+                            value: v,
+                            step_size: 0.5,
+                        })
                         .collect()
                 })
                 .label_formatter(|_, _| String::new())
@@ -118,7 +121,10 @@ impl Waveform {
                 .y_grid_spacer(|_input| {
                     [-1.0_f64, -0.5, 0.0, 0.5, 1.0]
                         .iter()
-                        .map(|&v| GridMark { value: v, step_size: 0.5 })
+                        .map(|&v| GridMark {
+                            value: v,
+                            step_size: 0.5,
+                        })
                         .collect()
                 })
                 .label_formatter(|_, _| String::new())

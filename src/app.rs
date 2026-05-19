@@ -3,6 +3,7 @@ use std::sync::Arc;
 use crate::audio::decoder::decode_audio_file;
 use crate::audio::player::Player;
 use crate::dsp::chain::ProcessorChain;
+use crate::ui::bode::BodeView;
 use crate::ui::controls::Controls;
 use crate::ui::spectrum::Spectrum;
 use crate::ui::toolbar::Toolbar;
@@ -17,6 +18,11 @@ pub struct DspApp {
     controls: Controls,
     waveform: Waveform,
     spectrum: Spectrum,
+    /// Shadow chain that lives on the UI thread.
+    /// Mirrors the audio chain's processor state so we can query transfer functions
+    /// without touching the audio thread.
+    ui_chain: Option<ProcessorChain>,
+    bode: BodeView,
 }
 
 impl eframe::App for DspApp {
@@ -33,11 +39,14 @@ impl eframe::App for DspApp {
                     self.file_name = path.file_name().and_then(|n| n.to_str()).map(String::from);
                     self.error_msg = None;
                     let samples = Arc::new(samples);
-                    let chain = ProcessorChain::new();
-                    self.controls = Controls::from_chain(&chain);
+                    let audio_chain = ProcessorChain::new();
+                    let ui_chain = ProcessorChain::new();
+                    self.controls = Controls::from_chain(&audio_chain);
                     self.waveform = Waveform::default();
                     self.spectrum = Spectrum::default();
-                    match Player::new(Arc::clone(&samples), sample_rate, chain) {
+                    self.ui_chain = Some(ui_chain);
+                    self.bode.mark_dirty();
+                    match Player::new(Arc::clone(&samples), sample_rate, audio_chain) {
                         Ok(p) => self.player = Some(p),
                         Err(e) => {
                             log::error!("failed to create player: {e:#}");
@@ -87,7 +96,40 @@ impl eframe::App for DspApp {
             ui.separator();
             self.spectrum.show(ui, &orig_queue, &fft_queue, sample_rate);
             ui.separator();
-            self.controls.show(ui, Some(&param_tx));
+
+            // Controls: collect param changes and selection.
+            let ctrl_out = self.controls.show(ui);
+
+            // Forward param changes to the audio thread and to the UI shadow chain.
+            for update in &ctrl_out.updates {
+                let _ = param_tx.send(update.clone());
+                if let Some(chain) = &mut self.ui_chain {
+                    chain.apply_update(update.clone());
+                }
+                self.bode.mark_dirty();
+            }
+            if ctrl_out.selection_changed {
+                self.bode.mark_dirty();
+            }
+
+            // Query the selected processor's transfer function from the shadow chain.
+            let selected = ctrl_out.selected_proc;
+            let tf_owned: Option<(Vec<f32>, Vec<f32>)> = self
+                .ui_chain
+                .as_ref()
+                .and_then(|chain| chain.processors().get(selected))
+                .and_then(|p| p.transfer_function());
+
+            // First param value of the selected processor (cutoff frequency marker).
+            let cutoff_hz = self.controls.selected_cutoff_hz();
+
+            ui.separator();
+            self.bode.show(
+                ui,
+                tf_owned.as_ref().map(|(b, a)| (b.as_slice(), a.as_slice())),
+                cutoff_hz,
+                sample_rate as f32,
+            );
 
             if is_playing {
                 ui.ctx().request_repaint();

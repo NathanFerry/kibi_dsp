@@ -1,6 +1,7 @@
 use crate::dsp::processor::Processor;
 use crate::dsp::processors::moving_average::MovingAverage;
 
+#[derive(Clone)]
 pub struct ParamUpdate {
     pub processor_idx: usize,
     pub param_idx: usize,
