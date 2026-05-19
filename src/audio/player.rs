@@ -17,6 +17,8 @@ pub struct Player {
     pub fft_queue: Arc<ArrayQueue<f32>>,
     pub cursor: Arc<AtomicUsize>,
     pub playing: Arc<AtomicBool>,
+    /// Set to true by the UI after a seek; the audio callback resets the chain and clears this.
+    pub reset_requested: Arc<AtomicBool>,
     pub sample_count: usize,
     pub sample_rate: u32,
 }
@@ -35,6 +37,7 @@ impl Player {
         let fft_queue = Arc::new(ArrayQueue::<f32>::new(FFT_QUEUE_SIZE));
         let cursor = Arc::new(AtomicUsize::new(0));
         let playing = Arc::new(AtomicBool::new(true));
+        let reset_requested = Arc::new(AtomicBool::new(false));
 
         let chain = ProcessorChain::new();
         let sample_count = samples.len();
@@ -48,6 +51,7 @@ impl Player {
             Arc::clone(&samples),
             Arc::clone(&cursor),
             Arc::clone(&playing),
+            Arc::clone(&reset_requested),
         )?;
 
         stream.play()?;
@@ -58,6 +62,7 @@ impl Player {
             fft_queue,
             cursor,
             playing,
+            reset_requested,
             sample_count,
             sample_rate,
         })
@@ -109,12 +114,16 @@ fn build_stream<T: SizedSample + FromSample<f32>>(
     samples: Arc<Vec<f32>>,
     cursor: Arc<AtomicUsize>,
     playing: Arc<AtomicBool>,
+    reset_requested: Arc<AtomicBool>,
 ) -> Result<Stream> {
     let channels = config.channels as usize;
 
     let stream = device.build_output_stream(
         config,
         move |data: &mut [T], _| {
+            if reset_requested.swap(false, Ordering::Relaxed) {
+                chain.reset();
+            }
             while let Ok(update) = param_rx.try_recv() {
                 chain.apply_update(update);
             }
