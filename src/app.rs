@@ -4,6 +4,7 @@ use crate::audio::decoder::decode_audio_file;
 use crate::audio::player::Player;
 use crate::dsp::chain::ProcessorChain;
 use crate::ui::controls::Controls;
+use crate::ui::spectrum::Spectrum;
 use crate::ui::toolbar::Toolbar;
 use crate::ui::waveform::Waveform;
 
@@ -15,6 +16,7 @@ pub struct DspApp {
     toolbar: Toolbar,
     controls: Controls,
     waveform: Waveform,
+    spectrum: Spectrum,
 }
 
 impl eframe::App for DspApp {
@@ -34,6 +36,7 @@ impl eframe::App for DspApp {
                     let chain = ProcessorChain::new();
                     self.controls = Controls::from_chain(&chain);
                     self.waveform = Waveform::default();
+                    self.spectrum = Spectrum::default();
                     match Player::new(Arc::clone(&samples), sample_rate, chain) {
                         Ok(p) => self.player = Some(p),
                         Err(e) => {
@@ -53,29 +56,40 @@ impl eframe::App for DspApp {
             ui.colored_label(egui::Color32::RED, err);
         }
 
-        // Extract player handles without holding a borrow across the mutable widget calls.
+        // Extract all player handles before any mutable widget calls.
         let player_data = self.player.as_ref().map(|p| {
             (
                 Arc::clone(&p.samples),
                 Arc::clone(&p.cursor),
                 p.sample_rate,
                 Arc::clone(&p.waveform_queue),
+                Arc::clone(&p.orig_queue),
+                Arc::clone(&p.fft_queue),
                 p.param_tx.clone(),
+                p.playing.load(std::sync::atomic::Ordering::Relaxed),
             )
         });
 
-        if let Some((samples, cursor, sample_rate, waveform_queue, param_tx)) = player_data {
+        if let Some((
+            samples,
+            cursor,
+            sample_rate,
+            waveform_queue,
+            orig_queue,
+            fft_queue,
+            param_tx,
+            is_playing,
+        )) = player_data
+        {
             ui.add_space(4.0);
             self.waveform
                 .show(ui, &samples, &cursor, sample_rate, &waveform_queue);
             ui.separator();
+            self.spectrum.show(ui, &orig_queue, &fft_queue, sample_rate);
+            ui.separator();
             self.controls.show(ui, Some(&param_tx));
 
-            if self
-                .player
-                .as_ref()
-                .is_some_and(|p| p.playing.load(std::sync::atomic::Ordering::Relaxed))
-            {
+            if is_playing {
                 ui.ctx().request_repaint();
             }
         }

@@ -11,12 +11,14 @@ use crate::dsp::chain::{ParamUpdate, ProcessorChain};
 
 pub const FFT_QUEUE_SIZE: usize = 8192;
 pub const WAVEFORM_QUEUE_SIZE: usize = 4096;
+pub const ORIG_QUEUE_SIZE: usize = 8192;
 
 pub struct Player {
     _stream: Stream,
     pub samples: Arc<Vec<f32>>,
     pub param_tx: Sender<ParamUpdate>,
     pub fft_queue: Arc<ArrayQueue<f32>>,
+    pub orig_queue: Arc<ArrayQueue<f32>>,
     pub waveform_queue: Arc<ArrayQueue<f32>>,
     pub cursor: Arc<AtomicUsize>,
     pub playing: Arc<AtomicBool>,
@@ -37,6 +39,7 @@ impl Player {
 
         let (param_tx, param_rx) = crossbeam_channel::unbounded::<ParamUpdate>();
         let fft_queue = Arc::new(ArrayQueue::<f32>::new(FFT_QUEUE_SIZE));
+        let orig_queue = Arc::new(ArrayQueue::<f32>::new(ORIG_QUEUE_SIZE));
         let waveform_queue = Arc::new(ArrayQueue::<f32>::new(WAVEFORM_QUEUE_SIZE));
         let cursor = Arc::new(AtomicUsize::new(0));
         let playing = Arc::new(AtomicBool::new(true));
@@ -48,6 +51,7 @@ impl Player {
             &stream_config,
             param_rx,
             Arc::clone(&fft_queue),
+            Arc::clone(&orig_queue),
             Arc::clone(&waveform_queue),
             chain,
             Arc::clone(&samples),
@@ -63,6 +67,7 @@ impl Player {
             samples,
             param_tx,
             fft_queue,
+            orig_queue,
             waveform_queue,
             cursor,
             playing,
@@ -111,6 +116,7 @@ fn build_stream<T: SizedSample + FromSample<f32>>(
     config: &cpal::StreamConfig,
     param_rx: Receiver<ParamUpdate>,
     fft_queue: Arc<ArrayQueue<f32>>,
+    orig_queue: Arc<ArrayQueue<f32>>,
     waveform_queue: Arc<ArrayQueue<f32>>,
     mut chain: ProcessorChain,
     samples: Arc<Vec<f32>>,
@@ -143,6 +149,7 @@ fn build_stream<T: SizedSample + FromSample<f32>>(
                     0.0f32
                 };
 
+                let _ = orig_queue.push(raw);
                 let processed = chain.process(raw);
                 let _ = fft_queue.push(processed);
                 let _ = waveform_queue.push(processed);
