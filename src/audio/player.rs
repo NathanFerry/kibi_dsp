@@ -9,22 +9,24 @@ use crossbeam_queue::ArrayQueue;
 
 use crate::dsp::chain::{ParamUpdate, ProcessorChain};
 
-pub const FFT_QUEUE_SIZE: usize = 4096;
+pub const FFT_QUEUE_SIZE: usize = 8192;
+pub const WAVEFORM_QUEUE_SIZE: usize = 4096;
 
 pub struct Player {
     _stream: Stream,
+    pub samples: Arc<Vec<f32>>,
     pub param_tx: Sender<ParamUpdate>,
     pub fft_queue: Arc<ArrayQueue<f32>>,
+    pub waveform_queue: Arc<ArrayQueue<f32>>,
     pub cursor: Arc<AtomicUsize>,
     pub playing: Arc<AtomicBool>,
-    /// Set to true by the UI after a seek; the audio callback resets the chain and clears this.
     pub reset_requested: Arc<AtomicBool>,
     pub sample_count: usize,
     pub sample_rate: u32,
 }
 
 impl Player {
-    pub fn new(samples: Arc<Vec<f32>>, sample_rate: u32) -> Result<Self> {
+    pub fn new(samples: Arc<Vec<f32>>, sample_rate: u32, chain: ProcessorChain) -> Result<Self> {
         let host = cpal::default_host();
         let device = host
             .default_output_device()
@@ -35,11 +37,10 @@ impl Player {
 
         let (param_tx, param_rx) = crossbeam_channel::unbounded::<ParamUpdate>();
         let fft_queue = Arc::new(ArrayQueue::<f32>::new(FFT_QUEUE_SIZE));
+        let waveform_queue = Arc::new(ArrayQueue::<f32>::new(WAVEFORM_QUEUE_SIZE));
         let cursor = Arc::new(AtomicUsize::new(0));
         let playing = Arc::new(AtomicBool::new(true));
         let reset_requested = Arc::new(AtomicBool::new(false));
-
-        let chain = ProcessorChain::new();
         let sample_count = samples.len();
 
         let stream = build_stream::<f32>(
@@ -47,6 +48,7 @@ impl Player {
             &stream_config,
             param_rx,
             Arc::clone(&fft_queue),
+            Arc::clone(&waveform_queue),
             chain,
             Arc::clone(&samples),
             Arc::clone(&cursor),
@@ -58,8 +60,10 @@ impl Player {
 
         Ok(Self {
             _stream: stream,
+            samples,
             param_tx,
             fft_queue,
+            waveform_queue,
             cursor,
             playing,
             reset_requested,
@@ -73,7 +77,6 @@ fn select_output_config(
     device: &cpal::Device,
     preferred_rate: u32,
 ) -> Result<cpal::SupportedStreamConfig> {
-    // Prefer F32 at the file's sample rate so cpal never needs to convert the sample type.
     if let Ok(configs) = device.supported_output_configs() {
         for config in configs {
             if config.sample_format() == SampleFormat::F32
@@ -85,7 +88,6 @@ fn select_output_config(
         }
     }
 
-    // F32 at any supported rate (pitch may differ from source).
     if let Ok(configs) = device.supported_output_configs() {
         for config in configs {
             if config.sample_format() == SampleFormat::F32 {
@@ -97,7 +99,6 @@ fn select_output_config(
         }
     }
 
-    // Last resort: device default — cpal will convert f32 callback samples to whatever the device needs.
     log::warn!("no F32 output config found; using device default");
     device
         .default_output_config()
@@ -110,6 +111,7 @@ fn build_stream<T: SizedSample + FromSample<f32>>(
     config: &cpal::StreamConfig,
     param_rx: Receiver<ParamUpdate>,
     fft_queue: Arc<ArrayQueue<f32>>,
+    waveform_queue: Arc<ArrayQueue<f32>>,
     mut chain: ProcessorChain,
     samples: Arc<Vec<f32>>,
     cursor: Arc<AtomicUsize>,
@@ -133,7 +135,6 @@ fn build_stream<T: SizedSample + FromSample<f32>>(
                     if pos < samples.len() {
                         samples[pos]
                     } else {
-                        // Reached end: stop and rewind
                         playing.store(false, Ordering::Relaxed);
                         cursor.store(0, Ordering::Relaxed);
                         0.0f32
@@ -144,6 +145,7 @@ fn build_stream<T: SizedSample + FromSample<f32>>(
 
                 let processed = chain.process(raw);
                 let _ = fft_queue.push(processed);
+                let _ = waveform_queue.push(processed);
                 let out = T::from_sample(processed);
                 for ch in frame.iter_mut() {
                     *ch = out;

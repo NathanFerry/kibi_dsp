@@ -1,4 +1,5 @@
 use crate::dsp::processor::Processor;
+use crate::dsp::processors::moving_average::MovingAverage;
 
 pub struct ParamUpdate {
     pub processor_idx: usize,
@@ -12,9 +13,11 @@ pub struct ProcessorChain {
 
 impl ProcessorChain {
     pub fn new() -> Self {
-        Self {
+        let mut chain = Self {
             processors: Vec::new(),
-        }
+        };
+        chain.add(Box::new(MovingAverage::new()));
+        chain
     }
 
     pub fn process(&mut self, sample: f32) -> f32 {

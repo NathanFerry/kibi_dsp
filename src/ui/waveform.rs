@@ -1,9 +1,107 @@
-pub struct Waveform;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+use crossbeam_queue::ArrayQueue;
+use egui_plot::{Line, Plot, PlotPoints};
+
+const BUF_SIZE: usize = 4096;
+
+pub struct Waveform {
+    processed_buf: Vec<f32>,        // fixed-size ring buffer
+    write_head: usize,              // next write position (mod BUF_SIZE)
+    scratch: Vec<f32>,              // pre-allocated ordered read-out buffer
+    orig_points_buf: Vec<[f64; 2]>, // pre-allocated downsample output, capacity 512
+    proc_points_buf: Vec<[f64; 2]>, // pre-allocated downsample output, capacity 512
+}
+
+impl Default for Waveform {
+    fn default() -> Self {
+        Self {
+            processed_buf: vec![0.0f32; BUF_SIZE],
+            write_head: 0,
+            scratch: vec![0.0f32; BUF_SIZE],
+            orig_points_buf: Vec::with_capacity(512),
+            proc_points_buf: Vec::with_capacity(512),
+        }
+    }
+}
+
+/// Reduce `data` to at most `target_points` points using min/max envelope downsampling.
+/// Each chunk emits two points — [i, min] and [i, max] — preserving waveform shape.
+/// Writes into `out` (cleared first; existing allocation is reused).
+fn downsample(data: &[f32], target_points: usize, out: &mut Vec<[f64; 2]>) {
+    out.clear();
+    if data.is_empty() || target_points == 0 {
+        return;
+    }
+    let chunks = (target_points / 2).max(1);
+    let chunk_size = (data.len() / chunks).max(1);
+    for (chunk_idx, chunk) in data.chunks(chunk_size).enumerate() {
+        let x = chunk_idx as f64;
+        let min = chunk.iter().cloned().fold(f32::INFINITY, f32::min) as f64;
+        let max = chunk.iter().cloned().fold(f32::NEG_INFINITY, f32::max) as f64;
+        out.push([x, min]);
+        out.push([x, max]);
+    }
+}
 
 impl Waveform {
-    pub fn new() -> Self {
-        Self
-    }
+    pub fn show(
+        &mut self,
+        ui: &mut egui::Ui,
+        samples: &Arc<Vec<f32>>,
+        cursor: &Arc<AtomicUsize>,
+        sample_rate: u32,
+        waveform_queue: &Arc<ArrayQueue<f32>>,
+    ) {
+        // Drain the queue into the ring buffer — index writes, no allocation.
+        while let Some(s) = waveform_queue.pop() {
+            self.processed_buf[self.write_head] = s;
+            self.write_head = (self.write_head + 1) % BUF_SIZE;
+        }
 
-    pub fn show(&mut self, _ui: &mut egui::Ui) {}
+        let display = ((sample_rate as usize * 100) / 1000).clamp(256, BUF_SIZE);
+
+        // Original: window of `display` samples centred on the cursor.
+        let pos = cursor.load(Ordering::Relaxed);
+        let half = display / 2;
+        let start = pos.saturating_sub(half);
+        let end = (start + display).min(samples.len());
+        downsample(&samples[start..end], 512, &mut self.orig_points_buf);
+
+        // Processed: unwrap the ring buffer into scratch, then downsample.
+        let n = display;
+        let ring_start = (self.write_head + BUF_SIZE - n) % BUF_SIZE;
+        if ring_start + n <= BUF_SIZE {
+            self.scratch[..n].copy_from_slice(&self.processed_buf[ring_start..ring_start + n]);
+        } else {
+            let first = BUF_SIZE - ring_start;
+            self.scratch[..first].copy_from_slice(&self.processed_buf[ring_start..]);
+            self.scratch[first..n].copy_from_slice(&self.processed_buf[..n - first]);
+        }
+        downsample(&self.scratch[..n], 512, &mut self.proc_points_buf);
+
+        // PlotPoints requires ownership; clone the filled slice (≤ 512 × 16 bytes).
+        let orig_points = PlotPoints::new(self.orig_points_buf.clone());
+        let proc_points = PlotPoints::new(self.proc_points_buf.clone());
+
+        ui.columns(2, |cols| {
+            Plot::new("waveform_original")
+                .height(150.0)
+                .include_y(-1.0)
+                .include_y(1.0)
+                .label_formatter(|_, _| String::new())
+                .show(&mut cols[0], |plot_ui| {
+                    plot_ui.line(Line::new("Original", orig_points));
+                });
+            Plot::new("waveform_processed")
+                .height(150.0)
+                .include_y(-1.0)
+                .include_y(1.0)
+                .label_formatter(|_, _| String::new())
+                .show(&mut cols[1], |plot_ui| {
+                    plot_ui.line(Line::new("Processed", proc_points));
+                });
+        });
+    }
 }
