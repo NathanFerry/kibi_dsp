@@ -11,6 +11,9 @@ fn main() -> eframe::Result {
     eframe::run_native(
         "DSP App",
         options,
-        Box::new(|_cc| Ok(Box::new(app::DspApp::default()))),
+        Box::new(|cc| {
+            ui::theme::apply_theme(&cc.egui_ctx);
+            Ok(Box::new(app::DspApp::default()))
+        }),
     )
 }

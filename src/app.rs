@@ -9,6 +9,7 @@ use crate::ui::chain_editor::ChainEditor;
 use crate::ui::controls::Controls;
 use crate::ui::spectrogram::Spectrogram;
 use crate::ui::spectrum::Spectrum;
+use crate::ui::theme::section_frame;
 use crate::ui::toolbar::Toolbar;
 use crate::ui::waveform::Waveform;
 
@@ -29,10 +30,23 @@ pub struct DspApp {
 
 impl eframe::App for DspApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        ui.spacing_mut().item_spacing = egui::Vec2::new(8.0, 6.0);
+        ui.spacing_mut().window_margin = egui::Margin::same(12);
+
         egui::ScrollArea::vertical().show(ui, |ui| {
-            if self
-                .toolbar
-                .show(ui, self.player.as_ref(), self.file_name.as_deref())
+            let open_file_clicked = section_frame()
+                .show(ui, |ui| {
+                    let clicked =
+                        self.toolbar
+                            .show(ui, self.player.as_ref(), self.file_name.as_deref());
+                    if let Some(err) = &self.error_msg {
+                        ui.colored_label(egui::Color32::RED, err);
+                    }
+                    clicked
+                })
+                .inner;
+
+            if open_file_clicked
                 && let Some(path) = rfd::FileDialog::new()
                     .add_filter("Audio", &["wav", "mp3", "flac", "ogg", "aac", "m4a"])
                     .pick_file()
@@ -66,10 +80,6 @@ impl eframe::App for DspApp {
                 }
             }
 
-            if let Some(err) = &self.error_msg {
-                ui.colored_label(egui::Color32::RED, err);
-            }
-
             let player_data = self.player.as_ref().map(|p| {
                 (
                     Arc::clone(&p.samples),
@@ -96,10 +106,11 @@ impl eframe::App for DspApp {
                 is_playing,
             )) = player_data
             {
-                // Chain editor: add / remove processors.
+                // Chain editor
                 let current_names = self.controls.processor_names();
-                let editor_out = self.chain_editor.show(ui, &current_names);
-                ui.separator();
+                let editor_out = section_frame()
+                    .show(ui, |ui| self.chain_editor.show(ui, &current_names))
+                    .inner;
 
                 if let Some(name) = editor_out.add_name {
                     let sr = sample_rate as f32;
@@ -110,7 +121,6 @@ impl eframe::App for DspApp {
                         if let Some(chain) = &mut self.ui_chain {
                             let idx = chain.processors().len();
                             chain.add(proc_ui);
-                            // Push into controls using the just-added processor.
                             if let Some(p) = chain.processors().get(idx) {
                                 self.controls.push_processor(p.as_ref());
                             }
@@ -128,26 +138,37 @@ impl eframe::App for DspApp {
                     self.bode.mark_dirty();
                 }
 
-                ui.add_space(4.0);
-                self.waveform
-                    .show(ui, &samples, &cursor, sample_rate, &waveform_queue, is_playing);
-                ui.separator();
+                // Waveform
+                section_frame().show(ui, |ui| {
+                    self.waveform.show(
+                        ui,
+                        &samples,
+                        &cursor,
+                        sample_rate,
+                        &waveform_queue,
+                        is_playing,
+                    );
+                });
 
-                // Spectrogram owns fft_queue: drain it and compute FFT frames first,
-                // then pass the latest frame to the spectrum so it can plot the processed line.
-                self.spectrogram.update(&fft_queue, is_playing);
-                self.spectrum.show(
-                    ui,
-                    &orig_queue,
-                    self.spectrogram.latest_magnitude_db(),
-                    sample_rate,
-                    is_playing,
-                );
-                ui.separator();
-                self.spectrogram.show(ui, sample_rate);
-                ui.separator();
+                // Spectrum — spectrogram drains fft_queue and shares FFT frames with spectrum
+                section_frame().show(ui, |ui| {
+                    self.spectrogram.update(&fft_queue, is_playing);
+                    self.spectrum.show(
+                        ui,
+                        &orig_queue,
+                        self.spectrogram.latest_magnitude_db(),
+                        sample_rate,
+                        is_playing,
+                    );
+                });
 
-                let ctrl_out = self.controls.show(ui);
+                // Spectrogram
+                section_frame().show(ui, |ui| {
+                    self.spectrogram.show(ui, sample_rate);
+                });
+
+                // Controls
+                let ctrl_out = section_frame().show(ui, |ui| self.controls.show(ui)).inner;
 
                 for update in &ctrl_out.updates {
                     let _ = param_tx.send(update.clone());
@@ -160,22 +181,23 @@ impl eframe::App for DspApp {
                     self.bode.mark_dirty();
                 }
 
+                // Bode
                 let selected = ctrl_out.selected_proc;
                 let tf_owned: Option<(Vec<f32>, Vec<f32>)> = self
                     .ui_chain
                     .as_ref()
                     .and_then(|chain| chain.processors().get(selected))
                     .and_then(|p| p.transfer_function());
-
                 let cutoff_hz = self.controls.selected_cutoff_hz();
 
-                ui.separator();
-                self.bode.show(
-                    ui,
-                    tf_owned.as_ref().map(|(b, a)| (b.as_slice(), a.as_slice())),
-                    cutoff_hz,
-                    sample_rate as f32,
-                );
+                section_frame().show(ui, |ui| {
+                    self.bode.show(
+                        ui,
+                        tf_owned.as_ref().map(|(b, a)| (b.as_slice(), a.as_slice())),
+                        cutoff_hz,
+                        sample_rate as f32,
+                    );
+                });
 
                 if is_playing {
                     ui.ctx().request_repaint();

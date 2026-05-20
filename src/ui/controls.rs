@@ -73,9 +73,21 @@ impl Controls {
 
         for (proc_idx, proc) in self.processors.iter_mut().enumerate() {
             let is_selected = self.selected_proc == proc_idx;
+            let color = crate::ui::theme::processor_color(&proc.name);
+            let proc_name = proc.name.clone();
 
-            let header = egui::RichText::new(proc.name.as_str()).strong();
-            if ui.selectable_label(is_selected, header).clicked() {
+            let mut clicked = false;
+            ui.horizontal(|ui| {
+                let (rect, _) =
+                    ui.allocate_exact_size(egui::Vec2::new(4.0, 18.0), egui::Sense::hover());
+                ui.painter()
+                    .rect_filled(rect, egui::CornerRadius::same(2), color);
+                let header = egui::RichText::new(&proc_name).strong().color(color);
+                if ui.selectable_label(is_selected, header).clicked() {
+                    clicked = true;
+                }
+            });
+            if clicked {
                 self.selected_proc = proc_idx;
             }
 
