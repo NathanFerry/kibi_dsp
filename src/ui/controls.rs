@@ -1,11 +1,15 @@
+use egui::Vec2;
+
 use crate::dsp::chain::{ParamUpdate, ProcessorChain};
 use crate::dsp::processor::Processor;
+use crate::ui::widgets::knob::knob;
 
 pub struct ParamState {
     pub name: &'static str,
     pub value: f32,
     pub min: f32,
     pub max: f32,
+    pub default: f32,
     pub unit: &'static str,
 }
 
@@ -78,18 +82,31 @@ impl Controls {
     pub fn show_params_only(&mut self, ui: &mut egui::Ui, proc_idx: usize) -> Vec<ParamUpdate> {
         let mut updates = Vec::new();
         if let Some(proc) = self.processors.get_mut(proc_idx) {
-            for (param_idx, param) in proc.params.iter_mut().enumerate() {
-                let label = format!("{} ({})", param.name, param.unit);
-                let r =
-                    ui.add(egui::Slider::new(&mut param.value, param.min..=param.max).text(label));
-                if r.changed() {
-                    updates.push(ParamUpdate {
-                        processor_idx: proc_idx,
-                        param_idx,
-                        value: param.value,
-                    });
+            let color = crate::ui::theme::processor_color(&proc.name);
+            ui.spacing_mut().item_spacing = Vec2::new(6.0, 8.0);
+            ui.horizontal_wrapped(|ui| {
+                for (param_idx, param) in proc.params.iter_mut().enumerate() {
+                    let id = format!("knob_{proc_idx}_{param_idx}");
+                    let r = knob(
+                        ui,
+                        &id,
+                        &mut param.value,
+                        param.min,
+                        param.max,
+                        param.default,
+                        param.name,
+                        param.unit,
+                        color,
+                    );
+                    if r.changed() {
+                        updates.push(ParamUpdate {
+                            processor_idx: proc_idx,
+                            param_idx,
+                            value: param.value,
+                        });
+                    }
                 }
-            }
+            });
         }
         updates
     }
@@ -151,6 +168,7 @@ fn processor_state_from(p: &dyn Processor) -> ProcessorState {
                 value: pp.default,
                 min: pp.min,
                 max: pp.max,
+                default: pp.default,
                 unit: pp.unit,
             })
             .collect(),

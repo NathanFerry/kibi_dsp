@@ -1,21 +1,26 @@
 use std::sync::atomic::Ordering;
 
 use crate::audio::player::Player;
+use crate::ui::widgets::vu_meter::VuMeter;
 
 #[derive(Default)]
-pub struct Toolbar;
+pub struct Toolbar {
+    vu_meter: VuMeter,
+}
 
 impl Toolbar {
     pub fn new() -> Self {
-        Self
+        Self::default()
     }
 
     /// Renders the toolbar. Returns `true` when the user clicks "Open File".
+    /// `vu_level` is the peak output amplitude in `[0.0, 1.0]` (1.0 = 0 dBFS).
     pub fn show(
         &mut self,
         ui: &mut egui::Ui,
         player: Option<&Player>,
         file_name: Option<&str>,
+        vu_level: f32,
     ) -> bool {
         let mut open_clicked = false;
 
@@ -44,6 +49,13 @@ impl Toolbar {
                 ui.add_enabled(false, egui::Button::new("Play"));
                 ui.add_enabled(false, egui::Button::new("Stop"));
             }
+
+            // Push VU meter to the far right
+            let remaining = ui.available_width() - 16.0 - ui.spacing().item_spacing.x;
+            if remaining > 0.0 {
+                ui.add_space(remaining);
+            }
+            self.vu_meter.show(ui, vu_level);
         });
 
         // Seek slider row

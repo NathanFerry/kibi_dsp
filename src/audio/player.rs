@@ -1,5 +1,5 @@
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicUsize, Ordering};
 
 use anyhow::{Context, Result};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
@@ -24,6 +24,8 @@ pub struct Player {
     pub cursor: Arc<AtomicUsize>,
     pub playing: Arc<AtomicBool>,
     pub reset_requested: Arc<AtomicBool>,
+    /// Peak output amplitude of the last audio buffer; stores f32 bits via AtomicU32.
+    pub vu_level: Arc<AtomicU32>,
     pub sample_count: usize,
     pub sample_rate: u32,
 }
@@ -46,6 +48,7 @@ impl Player {
         let cursor = Arc::new(AtomicUsize::new(0));
         let playing = Arc::new(AtomicBool::new(true));
         let reset_requested = Arc::new(AtomicBool::new(false));
+        let vu_level = Arc::new(AtomicU32::new(0));
         let sample_count = samples.len();
 
         let stream = build_stream::<f32>(
@@ -61,6 +64,7 @@ impl Player {
             Arc::clone(&cursor),
             Arc::clone(&playing),
             Arc::clone(&reset_requested),
+            Arc::clone(&vu_level),
         )?;
 
         stream.play()?;
@@ -76,6 +80,7 @@ impl Player {
             cursor,
             playing,
             reset_requested,
+            vu_level,
             sample_count,
             sample_rate,
         })
@@ -128,6 +133,7 @@ fn build_stream<T: SizedSample + FromSample<f32>>(
     cursor: Arc<AtomicUsize>,
     playing: Arc<AtomicBool>,
     reset_requested: Arc<AtomicBool>,
+    vu_level: Arc<AtomicU32>,
 ) -> Result<Stream> {
     let channels = config.channels as usize;
 
@@ -143,6 +149,7 @@ fn build_stream<T: SizedSample + FromSample<f32>>(
             while let Ok(update) = param_rx.try_recv() {
                 chain.apply_update(update);
             }
+            let mut frame_peak = 0.0f32;
             for frame in data.chunks_mut(channels) {
                 let raw = if playing.load(Ordering::Relaxed) {
                     let pos = cursor.fetch_add(1, Ordering::Relaxed);
@@ -159,6 +166,7 @@ fn build_stream<T: SizedSample + FromSample<f32>>(
 
                 let _ = orig_queue.push(raw);
                 let processed = chain.process(raw);
+                frame_peak = frame_peak.max(processed.abs());
                 let _ = fft_queue.push(processed);
                 let _ = waveform_queue.push(processed);
                 let out = T::from_sample(processed);
@@ -166,6 +174,7 @@ fn build_stream<T: SizedSample + FromSample<f32>>(
                     *ch = out;
                 }
             }
+            vu_level.store(frame_peak.to_bits(), Ordering::Relaxed);
         },
         |err| log::error!("audio stream error: {err}"),
         None,

@@ -6,3 +6,4 @@ pub mod spectrum;
 pub mod theme;
 pub mod toolbar;
 pub mod waveform;
+pub mod widgets;

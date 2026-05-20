@@ -32,6 +32,12 @@ pub struct DspApp {
 impl eframe::App for DspApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         // ── TOOLBAR ───────────────────────────────────────────────────────────
+        let vu_level = self
+            .player
+            .as_ref()
+            .map(|p| f32::from_bits(p.vu_level.load(std::sync::atomic::Ordering::Relaxed)))
+            .unwrap_or(0.0);
+
         let open_clicked = egui::Panel::top("toolbar")
             .resizable(false)
             .frame(
@@ -40,9 +46,12 @@ impl eframe::App for DspApp {
                     .inner_margin(egui::Margin::same(8)),
             )
             .show_inside(ui, |ui| {
-                let clicked =
-                    self.toolbar
-                        .show(ui, self.player.as_ref(), self.file_name.as_deref());
+                let clicked = self.toolbar.show(
+                    ui,
+                    self.player.as_ref(),
+                    self.file_name.as_deref(),
+                    vu_level,
+                );
                 if let Some(err) = &self.error_msg {
                     ui.colored_label(egui::Color32::RED, err);
                 }
