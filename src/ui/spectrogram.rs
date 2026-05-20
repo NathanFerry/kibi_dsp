@@ -51,7 +51,11 @@ impl Spectrogram {
 
     /// Drain `fft_queue`, update the ring buffer, and compute new FFT frames.
     /// Call this once per UI frame before reading `latest_magnitude_db`.
-    pub fn update(&mut self, fft_queue: &Arc<ArrayQueue<f32>>) {
+    /// When `playing` is false the queue is left untouched so the last frame stays frozen.
+    pub fn update(&mut self, fft_queue: &Arc<ArrayQueue<f32>>, playing: bool) {
+        if !playing {
+            return;
+        }
         while let Some(s) = fft_queue.pop() {
             self.ring[self.ring_write] = s;
             self.ring_write = (self.ring_write + 1) % FFT_SIZE;

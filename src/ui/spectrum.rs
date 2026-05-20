@@ -50,11 +50,14 @@ impl Spectrum {
         orig_queue: &Arc<ArrayQueue<f32>>,
         proc_mag: &[f32],
         sample_rate: u32,
+        playing: bool,
     ) {
-        while let Some(s) = orig_queue.pop() {
-            self.orig_ring[self.orig_write] = s;
-            self.orig_write = (self.orig_write + 1) % FFT_SIZE;
-            self.orig_dirty = true;
+        if playing {
+            while let Some(s) = orig_queue.pop() {
+                self.orig_ring[self.orig_write] = s;
+                self.orig_write = (self.orig_write + 1) % FFT_SIZE;
+                self.orig_dirty = true;
+            }
         }
 
         if self.orig_dirty {

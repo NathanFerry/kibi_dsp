@@ -54,11 +54,14 @@ impl Waveform {
         cursor: &Arc<AtomicUsize>,
         sample_rate: u32,
         waveform_queue: &Arc<ArrayQueue<f32>>,
+        playing: bool,
     ) {
-        // Drain the queue into the ring buffer — index writes, no allocation.
-        while let Some(s) = waveform_queue.pop() {
-            self.processed_buf[self.write_head] = s;
-            self.write_head = (self.write_head + 1) % BUF_SIZE;
+        // Only drain when playing — skipping keeps the last frame frozen when paused.
+        if playing {
+            while let Some(s) = waveform_queue.pop() {
+                self.processed_buf[self.write_head] = s;
+                self.write_head = (self.write_head + 1) % BUF_SIZE;
+            }
         }
 
         let display = ((sample_rate as usize * 100) / 1000).clamp(256, BUF_SIZE);
