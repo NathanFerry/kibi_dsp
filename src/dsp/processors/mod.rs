@@ -6,6 +6,7 @@ pub mod chebyshev;
 pub mod chorus;
 pub mod delay;
 pub mod fir;
+pub mod freeverb;
 pub mod gain;
 pub mod moving_average;
 pub mod notch;
@@ -16,6 +17,7 @@ use butterworth::Butterworth;
 use chorus::Chorus;
 use delay::Delay;
 use fir::{FirHighPass, FirLowPass};
+use freeverb::Freeverb;
 use gain::Gain;
 use moving_average::MovingAverage;
 use notch::Notch;
@@ -30,6 +32,7 @@ pub const PROCESSOR_NAMES: &[&str] = &[
     "Gain",
     "Delay",
     "Chorus",
+    "Freeverb",
 ];
 
 pub fn make_processor(name: &str, sample_rate: f32) -> Option<Box<dyn Processor>> {
@@ -43,6 +46,7 @@ pub fn make_processor(name: &str, sample_rate: f32) -> Option<Box<dyn Processor>
         "Gain" => Some(Box::new(Gain::new())),
         "Delay" => Some(Box::new(Delay::new(sample_rate))),
         "Chorus" => Some(Box::new(Chorus::new(sample_rate))),
+        "Freeverb" => Some(Box::new(Freeverb::new(sample_rate))),
         _ => None,
     }
 }
