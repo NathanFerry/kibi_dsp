@@ -67,6 +67,33 @@ impl Controls {
             .map(|p| p.value)
     }
 
+    pub fn cutoff_hz_for(&self, proc_idx: usize) -> Option<f32> {
+        self.processors
+            .get(proc_idx)?
+            .params
+            .first()
+            .map(|p| p.value)
+    }
+
+    pub fn show_params_only(&mut self, ui: &mut egui::Ui, proc_idx: usize) -> Vec<ParamUpdate> {
+        let mut updates = Vec::new();
+        if let Some(proc) = self.processors.get_mut(proc_idx) {
+            for (param_idx, param) in proc.params.iter_mut().enumerate() {
+                let label = format!("{} ({})", param.name, param.unit);
+                let r =
+                    ui.add(egui::Slider::new(&mut param.value, param.min..=param.max).text(label));
+                if r.changed() {
+                    updates.push(ParamUpdate {
+                        processor_idx: proc_idx,
+                        param_idx,
+                        value: param.value,
+                    });
+                }
+            }
+        }
+        updates
+    }
+
     pub fn show(&mut self, ui: &mut egui::Ui) -> ControlsOutput {
         let prev_selected = self.selected_proc;
         let mut updates = Vec::new();
