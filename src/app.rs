@@ -7,6 +7,7 @@ use crate::dsp::processors::make_processor;
 use crate::ui::bode::BodeView;
 use crate::ui::chain_editor::ChainEditor;
 use crate::ui::controls::Controls;
+use crate::ui::spectrogram::Spectrogram;
 use crate::ui::spectrum::Spectrum;
 use crate::ui::toolbar::Toolbar;
 use crate::ui::waveform::Waveform;
@@ -21,6 +22,7 @@ pub struct DspApp {
     controls: Controls,
     waveform: Waveform,
     spectrum: Spectrum,
+    spectrogram: Spectrogram,
     ui_chain: Option<ProcessorChain>,
     bode: BodeView,
 }
@@ -44,6 +46,7 @@ impl eframe::App for DspApp {
                     self.controls = Controls::from_chain(&audio_chain);
                     self.waveform = Waveform::default();
                     self.spectrum = Spectrum::default();
+                    self.spectrogram.reset();
                     self.ui_chain = Some(ui_chain);
                     self.bode.mark_dirty();
                     match Player::new(Arc::clone(&samples), sample_rate, audio_chain) {
@@ -127,7 +130,18 @@ impl eframe::App for DspApp {
             self.waveform
                 .show(ui, &samples, &cursor, sample_rate, &waveform_queue);
             ui.separator();
-            self.spectrum.show(ui, &orig_queue, &fft_queue, sample_rate);
+
+            // Spectrogram owns fft_queue: drain it and compute FFT frames first,
+            // then pass the latest frame to the spectrum so it can plot the processed line.
+            self.spectrogram.update(&fft_queue);
+            self.spectrum.show(
+                ui,
+                &orig_queue,
+                self.spectrogram.latest_magnitude_db(),
+                sample_rate,
+            );
+            ui.separator();
+            self.spectrogram.show(ui, sample_rate);
             ui.separator();
 
             let ctrl_out = self.controls.show(ui);

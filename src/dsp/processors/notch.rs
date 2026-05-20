@@ -86,9 +86,7 @@ impl Notch {
 
 impl Processor for Notch {
     fn process(&mut self, sample: f32) -> f32 {
-        let y = self.b0 * sample
-            + self.b1 * self.x1
-            + self.b2 * self.x2
+        let y = self.b0 * sample + self.b1 * self.x1 + self.b2 * self.x2
             - self.a1 * self.y1
             - self.a2 * self.y2;
         self.x2 = self.x1;

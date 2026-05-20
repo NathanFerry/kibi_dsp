@@ -61,10 +61,7 @@ fn compute_biquad_coeffs(
     let a1 = -2.0 * cos_w0;
     let a2 = 1.0 - alpha;
 
-    (
-        vec![b0 / a0, b1 / a0, b2 / a0],
-        vec![1.0, a1 / a0, a2 / a0],
-    )
+    (vec![b0 / a0, b1 / a0, b2 / a0], vec![1.0, a1 / a0, a2 / a0])
 }
 
 pub struct Biquad {
@@ -128,9 +125,7 @@ impl Biquad {
 
 impl Processor for Biquad {
     fn process(&mut self, sample: f32) -> f32 {
-        let y = self.b0 * sample
-            + self.b1 * self.x1
-            + self.b2 * self.x2
+        let y = self.b0 * sample + self.b1 * self.x1 + self.b2 * self.x2
             - self.a1 * self.y1
             - self.a2 * self.y2;
         self.x2 = self.x1;

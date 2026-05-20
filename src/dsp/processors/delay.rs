@@ -70,8 +70,8 @@ impl Delay {
 
 impl Processor for Delay {
     fn process(&mut self, sample: f32) -> f32 {
-        let read_head =
-            (self.write_head + self.max_delay_samples - self.delay_samples) % self.max_delay_samples;
+        let read_head = (self.write_head + self.max_delay_samples - self.delay_samples)
+            % self.max_delay_samples;
         let delayed = self.buffer[read_head];
 
         let lp_out = self.apply_feedback_lp(delayed);
