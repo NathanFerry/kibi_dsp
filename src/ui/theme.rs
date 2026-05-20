@@ -1,4 +1,4 @@
-use egui::{Color32, Context, CornerRadius, Margin, Shadow, Stroke, Visuals};
+use egui::{Align2, Color32, Context, CornerRadius, FontId, Margin, Pos2, Sense, Shadow, Stroke, Vec2, Visuals};
 
 pub const BACKGROUND: Color32 = Color32::from_rgb(0x1a, 0x1a, 0x2e);
 pub const SURFACE: Color32 = Color32::from_rgb(0x16, 0x21, 0x3e);
@@ -75,6 +75,46 @@ pub fn processor_color(name: &str) -> Color32 {
     } else {
         ACCENT_PINK
     }
+}
+
+/// Draws a 24px styled title bar above a visualization panel.
+/// Uses egui's Painter so it sits flush against the panel frame with no extra margin.
+pub fn draw_panel_header(
+    ui: &mut egui::Ui,
+    title: &str,
+    dot_color: Color32,
+    accent_color: Color32,
+) {
+    let available_w = ui.available_width();
+    let (rect, _) = ui.allocate_exact_size(Vec2::new(available_w, 24.0), Sense::hover());
+    if !ui.is_rect_visible(rect) {
+        return;
+    }
+    let painter = ui.painter_at(rect);
+    painter.rect_filled(rect, 0.0, SURFACE_HIGH);
+
+    // 1px bottom border at 40% opacity using accent color
+    painter.line_segment(
+        [rect.left_bottom(), rect.right_bottom()],
+        Stroke::new(
+            1.0,
+            Color32::from_rgba_unmultiplied(accent_color.r(), accent_color.g(), accent_color.b(), 102),
+        ),
+    );
+
+    // Colored dot: 8px left padding to left edge, radius 3
+    let dot_cx = rect.left() + 11.0;
+    let dot_cy = rect.center().y;
+    painter.circle_filled(Pos2::new(dot_cx, dot_cy), 3.0, dot_color);
+
+    // Title text: 5px gap after the dot's right edge
+    painter.text(
+        Pos2::new(dot_cx + 8.0, dot_cy),
+        Align2::LEFT_CENTER,
+        title,
+        FontId::proportional(11.0),
+        TEXT_MUTED,
+    );
 }
 
 pub fn section_frame() -> egui::Frame {

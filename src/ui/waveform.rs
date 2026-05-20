@@ -2,7 +2,10 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use crossbeam_queue::ArrayQueue;
-use egui_plot::{GridMark, Line, Plot, PlotPoints};
+use egui::Color32;
+use egui_plot::{GridMark, HLine, Line, Plot, PlotPoint, PlotPoints, Text};
+
+use crate::ui::theme::{ACCENT_BLUE, ACCENT_ORANGE, TEXT_MUTED, draw_panel_header};
 
 const BUF_SIZE: usize = 4096;
 
@@ -89,8 +92,19 @@ impl Waveform {
         let orig_points = PlotPoints::new(self.orig_points_buf.clone());
         let proc_points = PlotPoints::new(self.proc_points_buf.clone());
 
+        let grid_color =
+            Color32::from_rgba_unmultiplied(TEXT_MUTED.r(), TEXT_MUTED.g(), TEXT_MUTED.b(), 51);
+        let center_line_color = Color32::from_rgba_unmultiplied(
+            ACCENT_BLUE.r(),
+            ACCENT_BLUE.g(),
+            ACCENT_BLUE.b(),
+            76,
+        );
+
+        // Panel header
+        draw_panel_header(ui, "WAVEFORM", ACCENT_BLUE, ACCENT_BLUE);
+
         ui.columns(2, |cols| {
-            cols[0].label("Original");
             Plot::new("waveform_original")
                 .height(150.0)
                 .include_y(-1.0)
@@ -110,9 +124,29 @@ impl Waveform {
                 })
                 .label_formatter(|_, _| String::new())
                 .show(&mut cols[0], |plot_ui| {
-                    plot_ui.line(Line::new("Original", orig_points));
+                    // Subtle grid lines
+                    for (i, &y) in [-1.0_f64, -0.5, 0.0, 0.5, 1.0].iter().enumerate() {
+                        plot_ui.hline(
+                            HLine::new(format!("g{i}"), y)
+                                .color(grid_color)
+                                .width(0.5),
+                        );
+                    }
+                    // Bright center line at y=0
+                    plot_ui.hline(
+                        HLine::new("center", 0.0)
+                            .color(center_line_color)
+                            .width(1.0),
+                    );
+                    // ORIGINAL label in top-left
+                    plot_ui.text(
+                        Text::new("orig_label", PlotPoint::new(1.0, 0.90), "ORIGINAL")
+                            .color(TEXT_MUTED)
+                            .anchor(egui::Align2::LEFT_TOP),
+                    );
+                    plot_ui.line(Line::new("Original", orig_points).color(ACCENT_BLUE));
                 });
-            cols[1].label("Processed");
+
             Plot::new("waveform_processed")
                 .height(150.0)
                 .include_y(-1.0)
@@ -132,7 +166,27 @@ impl Waveform {
                 })
                 .label_formatter(|_, _| String::new())
                 .show(&mut cols[1], |plot_ui| {
-                    plot_ui.line(Line::new("Processed", proc_points));
+                    // Subtle grid lines
+                    for (i, &y) in [-1.0_f64, -0.5, 0.0, 0.5, 1.0].iter().enumerate() {
+                        plot_ui.hline(
+                            HLine::new(format!("g{i}"), y)
+                                .color(grid_color)
+                                .width(0.5),
+                        );
+                    }
+                    // Bright center line at y=0
+                    plot_ui.hline(
+                        HLine::new("center", 0.0)
+                            .color(center_line_color)
+                            .width(1.0),
+                    );
+                    // PROCESSED label in top-left
+                    plot_ui.text(
+                        Text::new("proc_label", PlotPoint::new(1.0, 0.90), "PROCESSED")
+                            .color(TEXT_MUTED)
+                            .anchor(egui::Align2::LEFT_TOP),
+                    );
+                    plot_ui.line(Line::new("Processed", proc_points).color(ACCENT_ORANGE));
                 });
         });
     }

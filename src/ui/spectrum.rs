@@ -1,8 +1,11 @@
 use std::sync::Arc;
 
 use crossbeam_queue::ArrayQueue;
+use egui::Color32;
 use egui_plot::{GridMark, Line, Plot, PlotPoints};
 use rustfft::{Fft, FftPlanner, num_complex::Complex};
+
+use crate::ui::theme::{ACCENT_BLUE, ACCENT_ORANGE, draw_panel_header};
 
 const FFT_SIZE: usize = 2048;
 
@@ -77,18 +80,37 @@ impl Spectrum {
 
         // Build processed plot points from the spectrogram's latest frame.
         let proc_fft_size = proc_mag.len() * 2;
-        let proc_plot = PlotPoints::new(
-            proc_mag
-                .iter()
-                .enumerate()
-                .map(|(i, &db)| {
-                    let freq = i as f64 * sample_rate as f64 / proc_fft_size as f64;
-                    [freq, db as f64]
-                })
-                .collect::<Vec<_>>(),
-        );
+        let make_proc_points = || {
+            PlotPoints::new(
+                proc_mag
+                    .iter()
+                    .enumerate()
+                    .map(|(i, &db)| {
+                        let freq = i as f64 * sample_rate as f64 / proc_fft_size as f64;
+                        [freq, db as f64]
+                    })
+                    .collect::<Vec<_>>(),
+            )
+        };
 
         let orig_plot = PlotPoints::new(self.orig_points.clone());
+
+        // Glow color: ACCENT_ORANGE at 20% opacity
+        let glow_color = Color32::from_rgba_unmultiplied(
+            ACCENT_ORANGE.r(),
+            ACCENT_ORANGE.g(),
+            ACCENT_ORANGE.b(),
+            51,
+        );
+        // Fill color: ACCENT_ORANGE at 8% opacity
+        let fill_color = Color32::from_rgba_unmultiplied(
+            ACCENT_ORANGE.r(),
+            ACCENT_ORANGE.g(),
+            ACCENT_ORANGE.b(),
+            20,
+        );
+
+        draw_panel_header(ui, "SPECTRUM", ACCENT_BLUE, ACCENT_BLUE);
 
         Plot::new("spectrum")
             .height(200.0)
@@ -126,11 +148,30 @@ impl Spectrum {
                 }
             })
             .show(ui, |plot_ui| {
+                // Fill area under processed line (drawn first so lines render on top)
                 plot_ui.line(
-                    Line::new("Original", orig_plot).color(egui::Color32::from_rgb(100, 160, 255)),
+                    Line::new("ProcessedFill", make_proc_points())
+                        .color(fill_color)
+                        .fill(0.0)
+                        .width(0.0),
                 );
+                // Processed glow: wide line at low opacity
                 plot_ui.line(
-                    Line::new("Processed", proc_plot).color(egui::Color32::from_rgb(255, 140, 60)),
+                    Line::new("ProcessedGlow", make_proc_points())
+                        .color(glow_color)
+                        .width(4.0),
+                );
+                // Processed main line
+                plot_ui.line(
+                    Line::new("Processed", make_proc_points())
+                        .color(ACCENT_ORANGE)
+                        .width(1.5),
+                );
+                // Original line
+                plot_ui.line(
+                    Line::new("Original", orig_plot)
+                        .color(ACCENT_BLUE)
+                        .width(1.5),
                 );
             });
     }

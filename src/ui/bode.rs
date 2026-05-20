@@ -1,6 +1,10 @@
-use egui_plot::{GridInput, GridMark, Line, LineStyle, Plot, PlotPoints, VLine};
+use egui::Color32;
+use egui_plot::{GridInput, GridMark, HLine, Line, LineStyle, Plot, PlotPoints, VLine};
 
 use crate::dsp::bode::compute_bode;
+use crate::ui::theme::{
+    ACCENT_GREEN, ACCENT_ORANGE, ACCENT_PINK, ACCENT_YELLOW, TEXT_MUTED, draw_panel_header,
+};
 
 const N_POINTS: usize = 512;
 
@@ -70,8 +74,28 @@ impl BodeView {
         let f_min_log = 20_f64.log10();
         let f_max_log = (sample_rate as f64 / 2.0).min(20_000.0).log10();
 
+        // Glow colors: 20% opacity variants
+        let mag_glow = Color32::from_rgba_unmultiplied(
+            ACCENT_GREEN.r(), ACCENT_GREEN.g(), ACCENT_GREEN.b(), 51,
+        );
+        let phase_glow = Color32::from_rgba_unmultiplied(
+            ACCENT_PINK.r(), ACCENT_PINK.g(), ACCENT_PINK.b(), 51,
+        );
+        // Fill colors: 8% opacity
+        let mag_fill = Color32::from_rgba_unmultiplied(
+            ACCENT_GREEN.r(), ACCENT_GREEN.g(), ACCENT_GREEN.b(), 20,
+        );
+        // Reference line: TEXT_MUTED at 30% opacity
+        let ref_line_color = Color32::from_rgba_unmultiplied(
+            TEXT_MUTED.r(), TEXT_MUTED.g(), TEXT_MUTED.b(), 76,
+        );
+
+        draw_panel_header(ui, "BODE DIAGRAM", ACCENT_ORANGE, ACCENT_ORANGE);
+
         // — Magnitude —
         let mag_pts = PlotPoints::new(self.mag_points.clone());
+        let mag_glow_pts = PlotPoints::new(self.mag_points.clone());
+        let mag_fill_pts = PlotPoints::new(self.mag_points.clone());
         Plot::new("bode_magnitude")
             .height(160.0)
             .include_y(-80.0)
@@ -94,20 +118,40 @@ impl BodeView {
                 }
             })
             .show(ui, |plot_ui| {
+                // 0 dB reference line
+                plot_ui.hline(HLine::new("0dB", 0.0).color(ref_line_color).width(1.0));
+                // Fill under magnitude curve
                 plot_ui.line(
-                    Line::new("Magnitude", mag_pts).color(egui::Color32::from_rgb(100, 200, 100)),
+                    Line::new("MagnitudeFill", mag_fill_pts)
+                        .color(mag_fill)
+                        .fill(0.0)
+                        .width(0.0),
+                );
+                // Glow pass
+                plot_ui.line(
+                    Line::new("MagnitudeGlow", mag_glow_pts)
+                        .color(mag_glow)
+                        .width(4.0),
+                );
+                // Main line
+                plot_ui.line(
+                    Line::new("Magnitude", mag_pts)
+                        .color(ACCENT_GREEN)
+                        .width(1.5),
                 );
                 if let Some(c) = cutoff_log {
                     plot_ui.vline(
                         VLine::new("Cutoff", c)
-                            .color(egui::Color32::from_rgb(255, 80, 80))
-                            .style(LineStyle::Dashed { length: 10.0 }),
+                            .color(ACCENT_YELLOW)
+                            .style(LineStyle::Dashed { length: 4.0 })
+                            .width(1.0),
                     );
                 }
             });
 
         // — Phase —
         let phase_pts = PlotPoints::new(self.phase_points.clone());
+        let phase_glow_pts = PlotPoints::new(self.phase_points.clone());
         Plot::new("bode_phase")
             .height(120.0)
             .include_y(-200.0)
@@ -130,14 +174,26 @@ impl BodeView {
                 }
             })
             .show(ui, |plot_ui| {
+                // 0° reference line
+                plot_ui.hline(HLine::new("0deg", 0.0).color(ref_line_color).width(1.0));
+                // Glow pass
                 plot_ui.line(
-                    Line::new("Phase", phase_pts).color(egui::Color32::from_rgb(200, 150, 50)),
+                    Line::new("PhaseGlow", phase_glow_pts)
+                        .color(phase_glow)
+                        .width(4.0),
+                );
+                // Main line
+                plot_ui.line(
+                    Line::new("Phase", phase_pts)
+                        .color(ACCENT_PINK)
+                        .width(1.5),
                 );
                 if let Some(c) = cutoff_log {
                     plot_ui.vline(
                         VLine::new("Cutoff", c)
-                            .color(egui::Color32::from_rgb(255, 80, 80))
-                            .style(LineStyle::Dashed { length: 10.0 }),
+                            .color(ACCENT_YELLOW)
+                            .style(LineStyle::Dashed { length: 4.0 })
+                            .width(1.0),
                     );
                 }
             });
