@@ -162,7 +162,7 @@ fn compute_fft(
         };
     }
     fft_plan.process_with_scratch(fft_buf, fft_scratch);
-    let norm_factor = FFT_SIZE as f32;
+    let norm_factor = (FFT_SIZE as f32).sqrt();
     for i in 0..FFT_SIZE / 2 {
         let db = 20.0_f32 * (fft_buf[i].norm() / norm_factor).max(1e-6_f32).log10();
         mag[i] = db;
