@@ -77,8 +77,6 @@ pub fn processor_color(name: &str) -> Color32 {
     }
 }
 
-/// Draws a 24px styled title bar above a visualization panel.
-/// Uses egui's Painter so it sits flush against the panel frame with no extra margin.
 pub fn draw_panel_header(
     ui: &mut egui::Ui,
     title: &str,
@@ -93,7 +91,6 @@ pub fn draw_panel_header(
     let painter = ui.painter_at(rect);
     painter.rect_filled(rect, 0.0, SURFACE_HIGH);
 
-    // 1px bottom border at 40% opacity using accent color
     painter.line_segment(
         [rect.left_bottom(), rect.right_bottom()],
         Stroke::new(
@@ -102,12 +99,10 @@ pub fn draw_panel_header(
         ),
     );
 
-    // Colored dot: 8px left padding to left edge, radius 3
     let dot_cx = rect.left() + 11.0;
     let dot_cy = rect.center().y;
     painter.circle_filled(Pos2::new(dot_cx, dot_cy), 3.0, dot_color);
 
-    // Title text: 5px gap after the dot's right edge
     painter.text(
         Pos2::new(dot_cx + 8.0, dot_cy),
         Align2::LEFT_CENTER,

@@ -13,8 +13,6 @@ impl Toolbar {
         Self::default()
     }
 
-    /// Renders the toolbar. Returns `true` when the user clicks "Open File".
-    /// `vu_level` is the peak output amplitude in `[0.0, 1.0]` (1.0 = 0 dBFS).
     pub fn show(
         &mut self,
         ui: &mut egui::Ui,
@@ -50,7 +48,6 @@ impl Toolbar {
                 ui.add_enabled(false, egui::Button::new("Stop"));
             }
 
-            // Push VU meter to the far right
             let remaining = ui.available_width() - 16.0 - ui.spacing().item_spacing.x;
             if remaining > 0.0 {
                 ui.add_space(remaining);
@@ -58,7 +55,6 @@ impl Toolbar {
             self.vu_meter.show(ui, vu_level);
         });
 
-        // Seek slider row
         if let Some(p) = player {
             let total = p.sample_count;
             let sr = p.sample_rate as f64;

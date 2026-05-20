@@ -3,7 +3,7 @@ use std::f32::consts::TAU;
 use crate::dsp::processor::{Processor, ProcessorParam};
 
 const NUM_VOICES: usize = 3;
-const MAX_DELAY_SAMPLES: usize = 192_000; // 2 s at 96 kHz
+const MAX_DELAY_SAMPLES: usize = 192_000;
 const BASE_DELAY_MS: f32 = 20.0;
 
 static PARAMS: &[ProcessorParam] = &[

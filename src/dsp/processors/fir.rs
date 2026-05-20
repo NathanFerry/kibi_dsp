@@ -3,7 +3,7 @@ use std::f32::consts::PI;
 use crate::dsp::processor::{Processor, ProcessorParam};
 
 const MAX_ORDER: usize = 256;
-const MAX_TAPS: usize = MAX_ORDER + 1; // 257
+const MAX_TAPS: usize = MAX_ORDER + 1;
 
 static LP_PARAMS: &[ProcessorParam] = &[
     ProcessorParam {
@@ -39,10 +39,8 @@ static HP_PARAMS: &[ProcessorParam] = &[
     },
 ];
 
-/// Windowed-sinc LP coefficients into `coeffs[0..taps]`; zeros the rest.
-/// `order` is forced even; `taps = order + 1`.
 fn fill_lp_coeffs(coeffs: &mut [f32], order: usize, cutoff_hz: f32, sample_rate: f32) {
-    let order = order & !1; // force even
+    let order = order & !1;
     let taps = order + 1;
     let fc = (cutoff_hz / sample_rate).clamp(0.0001, 0.4999);
     let m = order as f32;
@@ -69,8 +67,6 @@ fn fill_lp_coeffs(coeffs: &mut [f32], order: usize, cutoff_hz: f32, sample_rate:
     }
 }
 
-/// HP via spectral inversion: multiply LP coefficients by (-1)^n,
-/// then normalize so sum of absolute values = 1.
 fn fill_hp_coeffs(coeffs: &mut [f32], order: usize, cutoff_hz: f32, sample_rate: f32) {
     fill_lp_coeffs(coeffs, order, cutoff_hz, sample_rate);
     let taps = (order & !1) + 1;
@@ -87,8 +83,6 @@ fn fill_hp_coeffs(coeffs: &mut [f32], order: usize, cutoff_hz: f32, sample_rate:
     }
 }
 
-/// Direct-form FIR convolution using a ring buffer of MAX_TAPS.
-/// Head always advances by 1 mod MAX_TAPS; only `taps` coefficients are summed.
 #[inline]
 fn fir_process(
     sample: f32,
@@ -106,8 +100,6 @@ fn fir_process(
     *head = (*head + 1) % MAX_TAPS;
     out
 }
-
-// ─── FIR Low-Pass ────────────────────────────────────────────────────────────
 
 pub struct FirLowPass {
     coeffs: Vec<f32>,
@@ -177,8 +169,6 @@ impl Processor for FirLowPass {
         Some((self.coeffs[..taps].to_vec(), vec![1.0f32]))
     }
 }
-
-// ─── FIR High-Pass ───────────────────────────────────────────────────────────
 
 pub struct FirHighPass {
     coeffs: Vec<f32>,

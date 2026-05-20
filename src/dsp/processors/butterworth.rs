@@ -26,8 +26,6 @@ static PARAMS: &[ProcessorParam] = &[
     },
 ];
 
-// ── Direct Form I biquad ─────────────────────────────────────────────────────
-
 #[derive(Clone, Copy, Default)]
 struct BiquadSection {
     b0: f32,
@@ -73,8 +71,6 @@ impl BiquadSection {
     }
 }
 
-// ── First-order section ──────────────────────────────────────────────────────
-
 #[derive(Clone, Copy, Default)]
 struct FirstOrder {
     b0: f32,
@@ -108,19 +104,14 @@ impl FirstOrder {
     }
 }
 
-// ── Coefficient builders ─────────────────────────────────────────────────────
-
-/// Bilinear-transform prewarped frequency.
 fn prewarp(cutoff_hz: f32, sample_rate: f32) -> f32 {
     (PI * cutoff_hz / sample_rate).tan()
 }
 
-/// Butterworth pole Q for the k-th biquad section (1-indexed) of an order-n filter.
 fn butter_q(n: usize, k: usize) -> f32 {
     1.0 / (2.0 * ((2 * k - 1) as f32 * PI / (2 * n) as f32).cos())
 }
 
-/// Bilinear LP biquad from analog prototype 1/(s² + s/Q + 1).
 fn lp_biquad(omega: f32, q: f32) -> BiquadSection {
     let w2 = omega * omega;
     let d = 1.0 + omega / q + w2;
@@ -134,7 +125,6 @@ fn lp_biquad(omega: f32, q: f32) -> BiquadSection {
     )
 }
 
-/// Bilinear HP biquad from analog prototype s²/(s² + s/Q + 1).
 fn hp_biquad(omega: f32, q: f32) -> BiquadSection {
     let w2 = omega * omega;
     let d = 1.0 + omega / q + w2;
@@ -148,31 +138,25 @@ fn hp_biquad(omega: f32, q: f32) -> BiquadSection {
     )
 }
 
-/// Bilinear LP first-order from 1/(s+1).
 fn lp_first_order(omega: f32) -> FirstOrder {
     let d = 1.0 + omega;
     FirstOrder::from_coefs(omega / d, omega / d, (omega - 1.0) / d)
 }
 
-/// Bilinear HP first-order from s/(s+1).
 fn hp_first_order(omega: f32) -> FirstOrder {
     let d = 1.0 + omega;
     FirstOrder::from_coefs(1.0 / d, -1.0 / d, (omega - 1.0) / d)
 }
 
-// ── Main struct ──────────────────────────────────────────────────────────────
-
 pub struct Butterworth {
-    filter_type: u8, // 0=LP, 1=HP, 2=BP
+    filter_type: u8,
     cutoff: f32,
     order: usize,
     sample_rate: f32,
 
-    // LP cascade (LP mode, or LP half of BP)
     lp_first: Option<FirstOrder>,
     lp_biquads: Vec<BiquadSection>,
 
-    // HP cascade (HP mode, or HP half of BP)
     hp_first: Option<FirstOrder>,
     hp_biquads: Vec<BiquadSection>,
 }
@@ -206,7 +190,6 @@ impl Butterworth {
             0 => self.fill_lp(order, cutoff),
             1 => self.fill_hp(order, cutoff),
             _ => {
-                // 1-octave bandpass: LP at cutoff*√2, HP at cutoff/√2
                 let lp_cut = (cutoff * SQRT_2).min(self.sample_rate * 0.45);
                 let hp_cut = (cutoff / SQRT_2).max(20.0);
                 self.fill_lp(order, lp_cut);
@@ -305,7 +288,6 @@ impl Processor for Butterworth {
     }
 
     fn transfer_function(&self) -> Option<(Vec<f32>, Vec<f32>)> {
-        // Cascade: convolve all section B and A polynomials.
         let mut b = vec![1.0f32];
         let mut a = vec![1.0f32];
 

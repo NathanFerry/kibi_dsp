@@ -44,9 +44,6 @@ impl Spectrum {
         }
     }
 
-    /// `proc_mag` is the latest spectrogram FFT frame (magnitude in dB, len = HALF).
-    /// The spectrogram is the sole consumer of `fft_queue`; we receive the pre-computed
-    /// processed magnitudes here to avoid double-draining the queue.
     pub fn show(
         &mut self,
         ui: &mut egui::Ui,
@@ -78,7 +75,6 @@ impl Spectrum {
             self.orig_dirty = false;
         }
 
-        // Build processed plot points from the spectrogram's latest frame.
         let proc_fft_size = proc_mag.len() * 2;
         let make_proc_points = || {
             PlotPoints::new(
@@ -95,14 +91,12 @@ impl Spectrum {
 
         let orig_plot = PlotPoints::new(self.orig_points.clone());
 
-        // Glow color: ACCENT_ORANGE at 20% opacity
         let glow_color = Color32::from_rgba_unmultiplied(
             ACCENT_ORANGE.r(),
             ACCENT_ORANGE.g(),
             ACCENT_ORANGE.b(),
             51,
         );
-        // Fill color: ACCENT_ORANGE at 8% opacity
         let fill_color = Color32::from_rgba_unmultiplied(
             ACCENT_ORANGE.r(),
             ACCENT_ORANGE.g(),
@@ -148,26 +142,22 @@ impl Spectrum {
                 }
             })
             .show(ui, |plot_ui| {
-                // Fill area under processed line (drawn first so lines render on top)
                 plot_ui.line(
                     Line::new("ProcessedFill", make_proc_points())
                         .color(fill_color)
                         .fill(0.0)
                         .width(0.0),
                 );
-                // Processed glow: wide line at low opacity
                 plot_ui.line(
                     Line::new("ProcessedGlow", make_proc_points())
                         .color(glow_color)
                         .width(4.0),
                 );
-                // Processed main line
                 plot_ui.line(
                     Line::new("Processed", make_proc_points())
                         .color(ACCENT_ORANGE)
                         .width(1.5),
                 );
-                // Original line
                 plot_ui.line(
                     Line::new("Original", orig_plot)
                         .color(ACCENT_BLUE)

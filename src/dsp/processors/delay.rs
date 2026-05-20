@@ -30,14 +30,12 @@ static PARAMS: &[ProcessorParam] = &[
 
 pub struct Delay {
     sample_rate: f32,
-    // Circular delay buffer — pre-allocated, never resized.
     buffer: Vec<f32>,
     max_delay_samples: usize,
     write_head: usize,
     delay_samples: usize,
     feedback: f32,
     mix: f32,
-    // One-pole IIR low-pass on the feedback path.
     feedback_lp_coeff: f32,
     feedback_lp_x1: f32,
 }
@@ -45,7 +43,7 @@ pub struct Delay {
 impl Delay {
     pub fn new(sample_rate: f32) -> Self {
         let max_delay_samples = (sample_rate * 2.0) as usize;
-        let delay_samples = (0.3 * sample_rate) as usize; // default 300 ms
+        let delay_samples = (0.3 * sample_rate) as usize;
         let feedback_lp_coeff = 1.0 - (-TAU * LP_CUTOFF_HZ / sample_rate).exp();
         Self {
             sample_rate,

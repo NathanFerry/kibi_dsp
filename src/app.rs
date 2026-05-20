@@ -31,7 +31,6 @@ pub struct DspApp {
 
 impl eframe::App for DspApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
-        // ── TOOLBAR ───────────────────────────────────────────────────────────
         let vu_level = self
             .player
             .as_ref()
@@ -93,7 +92,6 @@ impl eframe::App for DspApp {
             }
         }
 
-        // ── SIDEBAR ──────────────────────────────────────────────────────────
         struct SidebarFx {
             add_name: Option<String>,
             remove_idx: Option<usize>,
@@ -183,7 +181,6 @@ impl eframe::App for DspApp {
             })
             .inner;
 
-        // Apply sidebar effects — channel sends, chain mutations
         if let Some(player) = &self.player {
             let sr = player.sample_rate as f32;
 
@@ -231,7 +228,6 @@ impl eframe::App for DspApp {
             self.bode.mark_dirty();
         }
 
-        // ── CENTRAL PANEL ─────────────────────────────────────────────────────
         let player_data = self.player.as_ref().map(|p| {
             (
                 Arc::clone(&p.samples),

@@ -26,8 +26,6 @@ static PARAMS: &[ProcessorParam] = &[
     },
 ];
 
-/// Audio EQ Cookbook (Bristow-Johnson) biquad coefficients, normalized by a0.
-/// Returns ([b0, b1, b2], [1.0, a1, a2]).
 fn compute_biquad_coeffs(
     filter_type: u8,
     cutoff: f32,
@@ -41,17 +39,14 @@ fn compute_biquad_coeffs(
 
     let (b0, b1, b2) = match filter_type {
         0 => {
-            // Low-pass
             let b0 = (1.0 - cos_w0) / 2.0;
             (b0, 1.0 - cos_w0, b0)
         }
         1 => {
-            // High-pass
             let b0 = (1.0 + cos_w0) / 2.0;
             (b0, -(1.0 + cos_w0), b0)
         }
         _ => {
-            // Band-pass
             let b0 = sin_w0 / 2.0;
             (b0, 0.0, -b0)
         }
@@ -69,19 +64,15 @@ pub struct Biquad {
     cutoff: f32,
     q: f32,
     sample_rate: f32,
-    // feedforward coefficients (normalized, a0=1)
     b0: f32,
     b1: f32,
     b2: f32,
-    // feedback coefficients (normalized)
     a1: f32,
     a2: f32,
-    // delay registers
     x1: f32,
     x2: f32,
     y1: f32,
     y2: f32,
-    // cached for transfer_function()
     b_coeffs: Vec<f32>,
     a_coeffs: Vec<f32>,
 }

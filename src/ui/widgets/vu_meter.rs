@@ -5,11 +5,8 @@ use crate::ui::theme::{ACCENT_GREEN, ACCENT_YELLOW, DANGER};
 const METER_WIDTH: f32 = 16.0;
 const METER_HEIGHT: f32 = 36.0;
 const NUM_SEGMENTS: usize = 20;
-/// Gap between adjacent segments in pixels.
 const GAP: f32 = 1.0;
-/// Seconds before peak hold starts decaying.
 const PEAK_HOLD_SECS: f64 = 2.0;
-/// dB floor below which all segments are dark.
 const DB_FLOOR: f32 = -40.0;
 
 pub struct VuMeter {
@@ -27,7 +24,6 @@ impl Default for VuMeter {
 }
 
 impl VuMeter {
-    /// Draw the meter. `level` is a linear amplitude in `[0.0, 1.0]` (1.0 = 0 dBFS).
     pub fn show(&mut self, ui: &mut Ui, level: f32) {
         let now = ui.input(|i| i.time);
 
@@ -38,7 +34,6 @@ impl VuMeter {
         };
         let level_db = level_db.clamp(DB_FLOOR, 0.0);
 
-        // Peak hold: refresh if new peak; decay after hold period
         if level_db >= self.peak_db {
             self.peak_db = level_db;
             self.peak_set_at = now;
@@ -53,12 +48,11 @@ impl VuMeter {
             return;
         }
 
-        let db_range = -DB_FLOOR; // 40 dB total
+        let db_range = -DB_FLOOR;
         let seg_h = (METER_HEIGHT - (NUM_SEGMENTS - 1) as f32 * GAP) / NUM_SEGMENTS as f32;
         let painter = ui.painter();
 
         for i in 0..NUM_SEGMENTS {
-            // Each segment covers 2 dB; segment 0 = bottom = most negative dB
             let seg_floor_db = DB_FLOOR + i as f32 * (db_range / NUM_SEGMENTS as f32);
             let lit = level_db >= seg_floor_db;
 
@@ -70,7 +64,6 @@ impl VuMeter {
                 35,
             );
 
-            // Segments are drawn bottom-up: i=0 is at the bottom of rect
             let y_bottom = rect.bottom() - i as f32 * (seg_h + GAP);
             let seg_rect = Rect::from_min_size(
                 Pos2::new(rect.left(), y_bottom - seg_h),
@@ -79,7 +72,6 @@ impl VuMeter {
             painter.rect_filled(seg_rect, 0.0, if lit { active_color } else { dim });
         }
 
-        // Peak hold line
         if self.peak_db > DB_FLOOR {
             let peak_frac = (self.peak_db - DB_FLOOR) / db_range;
             let peak_y = rect.bottom() - peak_frac * METER_HEIGHT;

@@ -10,8 +10,6 @@ use symphonia::core::io::MediaSourceStream;
 use symphonia::core::meta::MetadataOptions;
 use symphonia::core::probe::Hint;
 
-/// Decode an audio file to a mono f32 sample buffer.
-/// Returns `(samples, sample_rate)`. Stereo is mixed down by averaging channels.
 pub fn decode_audio_file(path: &Path) -> Result<(Vec<f32>, u32)> {
     let file = File::open(path).context("failed to open audio file")?;
     let mss = MediaSourceStream::new(Box::new(file), Default::default());
@@ -80,7 +78,6 @@ pub fn decode_audio_file(path: &Path) -> Result<(Vec<f32>, u32)> {
         let mut sample_buf = SampleBuffer::<f32>::new(n_frames as u64, spec);
         sample_buf.copy_interleaved_ref(decoded);
 
-        // Mix down to mono: interleaved layout is [ch0_f0, ch1_f0, ch0_f1, ...]
         for frame in sample_buf.samples().chunks(ch_count) {
             let mono = frame.iter().sum::<f32>() / ch_count as f32;
             samples.push(mono);

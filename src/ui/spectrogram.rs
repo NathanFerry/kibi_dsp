@@ -18,9 +18,7 @@ pub struct Spectrogram {
     ring: Vec<f32>,
     ring_write: usize,
     hop_counter: usize,
-    /// Ring of FFT frames; each frame is HALF magnitude_db values.
     frames: Vec<Vec<f32>>,
-    /// Next write position in `frames` (oldest frame when reading).
     frame_write: usize,
     hann: Vec<f32>,
     fft_plan: Arc<dyn Fft<f32>>,
@@ -53,9 +51,6 @@ impl Spectrogram {
         }
     }
 
-    /// Drain `fft_queue`, update the ring buffer, and compute new FFT frames.
-    /// Call this once per UI frame before reading `latest_magnitude_db`.
-    /// When `playing` is false the queue is left untouched so the last frame stays frozen.
     pub fn update(&mut self, fft_queue: &Arc<ArrayQueue<f32>>, playing: bool) {
         if !playing {
             return;
@@ -71,7 +66,6 @@ impl Spectrogram {
         }
     }
 
-    /// The most recently computed FFT frame (HALF magnitude_db values).
     pub fn latest_magnitude_db(&self) -> &[f32] {
         let idx = (self.frame_write + MAX_FRAMES - 1) % MAX_FRAMES;
         &self.frames[idx]
@@ -105,7 +99,6 @@ impl Spectrogram {
         self.frame_write = (self.frame_write + 1) % MAX_FRAMES;
     }
 
-    /// Render the heatmap and the dB floor slider.
     pub fn show(&mut self, ui: &mut egui::Ui, sample_rate: u32) {
         draw_panel_header(ui, "SPECTROGRAM", ACCENT_PINK, ACCENT_PINK);
 
@@ -125,13 +118,12 @@ impl Spectrogram {
         let painter = ui.painter_at(rect);
         painter.rect_filled(rect, 0.0, BACKGROUND);
 
-        // Reserve 8px on the right for the color legend
         let legend_w = 8.0;
-        let heatmap_right = rect.right() - legend_w - 20.0; // extra space for labels
+        let heatmap_right = rect.right() - legend_w - 20.0;
         let heatmap_rect = Rect::from_min_max(rect.min, Pos2::new(heatmap_right, rect.max.y));
 
         let col_w = heatmap_rect.width() / MAX_FRAMES as f32;
-        let n_rows = PLOT_HEIGHT as usize; // one pixel per row
+        let n_rows = PLOT_HEIGHT as usize;
 
         for col in 0..MAX_FRAMES {
             let frame_idx = (self.frame_write + col) % MAX_FRAMES;
@@ -139,7 +131,6 @@ impl Spectrogram {
             let x = heatmap_rect.left() + col as f32 * col_w;
 
             for row in 0..n_rows {
-                // row 0 = top = Nyquist, row n_rows-1 = bottom = 0 Hz
                 let t = row as f32 / (n_rows.saturating_sub(1).max(1)) as f32;
                 let bin = ((1.0 - t) * (HALF - 1) as f32).round() as usize;
                 let bin = bin.min(HALF - 1);
@@ -157,7 +148,6 @@ impl Spectrogram {
             }
         }
 
-        // Frequency markers
         let nyquist = sample_rate as f32 / 2.0;
         let markers: &[(f32, &str)] = &[
             (500.0, "500 Hz"),
@@ -185,7 +175,6 @@ impl Spectrogram {
             );
         }
 
-        // Axis labels
         painter.text(
             Pos2::new(heatmap_rect.center().x, rect.bottom() - 4.0),
             Align2::CENTER_BOTTOM,
@@ -201,16 +190,13 @@ impl Spectrogram {
             Color32::from_gray(180),
         );
 
-        // ── Color legend ───────────────────────────────────────────────────────
         let legend_bar_rect = Rect::from_min_size(
             Pos2::new(rect.right() - legend_w, rect.top()),
             Vec2::new(legend_w, rect.height()),
         );
 
-        // Gradient bar: bottom = BACKGROUND (lowest energy), top = WHITE (peak energy)
         let n_legend = rect.height() as usize;
         for row in 0..n_legend {
-            // row 0 = top = max energy, row n_legend-1 = bottom = min energy
             let t = 1.0 - row as f32 / (n_legend as f32 - 1.0).max(1.0);
             let db = self.db_floor + t * (-self.db_floor);
             let color = db_to_color(db, self.db_floor);
@@ -221,14 +207,12 @@ impl Spectrogram {
             painter.rect_filled(cell, 0.0, color);
         }
 
-        // dB labels at fixed positions
         for &db in &[-60.0_f32, -40.0, -20.0, 0.0] {
             if db < self.db_floor {
                 continue;
             }
             let t = (db - self.db_floor) / (-self.db_floor);
             let y = rect.bottom() - t * rect.height();
-            // Tick mark
             painter.line_segment(
                 [
                     Pos2::new(legend_bar_rect.left() - 3.0, y),
@@ -236,7 +220,6 @@ impl Spectrogram {
                 ],
                 Stroke::new(0.5, Color32::from_gray(180)),
             );
-            // Label
             painter.text(
                 Pos2::new(legend_bar_rect.left() - 5.0, y),
                 Align2::RIGHT_CENTER,
@@ -249,14 +232,8 @@ impl Spectrogram {
 }
 
 fn db_to_color(db: f32, db_floor: f32) -> Color32 {
-    // Normalize to [0.0, 1.0] over the range [db_floor, 0 dB].
     let t = ((db - db_floor) / (0.0_f32 - db_floor)).clamp(0.0, 1.0);
 
-    // Accent-palette colormap:
-    // 0.00 → BACKGROUND (#1a1a2e)  — below noise floor
-    // 0.33 → ACCENT_BLUE (#4cc9f0) — low energy
-    // 0.66 → ACCENT_PINK (#f72585) — mid energy
-    // 1.00 → WHITE                 — peak energy
     if t < 0.33 {
         lerp_color(BACKGROUND, ACCENT_BLUE, t / 0.33)
     } else if t < 0.66 {

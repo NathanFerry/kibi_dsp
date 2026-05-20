@@ -4,30 +4,18 @@ use crate::ui::theme::{SURFACE_HIGH, TEXT_MUTED, TEXT_PRIMARY};
 
 const KNOB_RADIUS: f32 = 20.0;
 const WIDGET_WIDTH: f32 = 64.0;
-/// 40px knob + 4px gap + 12px label + 12px value
 const WIDGET_HEIGHT: f32 = KNOB_RADIUS * 2.0 + 28.0;
 
-/// Start of the arc sweep in radians (egui convention: 0=right, CW=positive).
-/// 135° = 7:30 o'clock position.
 const START_ANGLE: f32 = 135.0 * std::f32::consts::PI / 180.0;
-/// Full sweep of the arc in radians: 270° CW from start (7:30) to end (4:30).
 const SWEEP: f32 = 270.0 * std::f32::consts::PI / 180.0;
 
 #[derive(Clone, Default)]
 struct KnobState {
     editing: bool,
     edit_buffer: String,
-    /// True on the first frame after edit mode opens; used to request focus once.
     just_opened: bool,
 }
 
-/// Rotary knob widget that replaces egui's Slider for processor parameters.
-///
-/// - Drag up to increase, drag down to decrease (0.5% of range per pixel).
-/// - Ctrl+drag for 10× finer adjustment.
-/// - Double-click to enter inline text entry; Enter/click-away confirms, Escape cancels.
-/// - Ctrl+double-click resets to `default`.
-/// - Hover tooltip shows the exact value.
 #[allow(clippy::too_many_arguments)]
 pub fn knob(
     ui: &mut Ui,
@@ -44,7 +32,6 @@ pub fn knob(
     let mut state: KnobState = ui.data(|d| d.get_temp(state_id)).unwrap_or_default();
 
     ui.push_id(id, |ui| {
-        // Use a non-interactive sense while editing so the TextEdit owns events.
         let sense = if state.editing {
             Sense::hover()
         } else {
@@ -53,14 +40,11 @@ pub fn knob(
         let (rect, mut response) =
             ui.allocate_exact_size(Vec2::new(WIDGET_WIDTH, WIDGET_HEIGHT), sense);
 
-        // ── Interaction (normal mode only) ────────────────────────────────────
         if !state.editing {
             if response.double_clicked() && ui.input(|i| i.modifiers.ctrl) {
-                // Ctrl+double-click: reset to default
                 *value = default;
                 response.mark_changed();
             } else if response.double_clicked() {
-                // Double-click: open inline text editor
                 state.editing = true;
                 state.edit_buffer = fmt(*value);
                 state.just_opened = true;
@@ -76,10 +60,8 @@ pub fn knob(
             }
         }
 
-        // ── Render ────────────────────────────────────────────────────────────
         if ui.is_rect_visible(rect) {
             if state.editing {
-                // Inline TextEdit centered in the knob circle area
                 let te_rect = Rect::from_center_size(
                     Pos2::new(rect.center().x, rect.top() + KNOB_RADIUS),
                     Vec2::new(WIDGET_WIDTH - 4.0, 22.0),
@@ -109,11 +91,9 @@ pub fn knob(
                             response.mark_changed();
                         }
                     }
-                    // Invalid parse → silently keep the current value.
                     state.editing = false;
                 }
 
-                // Draw the parameter name below the text field
                 let font = egui::FontId::proportional(10.0);
                 ui.painter().text(
                     Pos2::new(rect.center().x, rect.top() + KNOB_RADIUS * 2.0 + 3.0),
@@ -129,7 +109,6 @@ pub fn knob(
             }
         }
 
-        // ── Persist state ─────────────────────────────────────────────────────
         let was_editing = state.editing;
         ui.data_mut(|d| d.insert_temp(state_id, state));
 
@@ -146,11 +125,9 @@ fn render(ui: &mut Ui, center: Pos2, t: f32, color: Color32, label: &str, value:
     let painter = ui.painter();
     let arc_r = KNOB_RADIUS - 5.0;
 
-    // Knob body
     painter.circle_filled(center, KNOB_RADIUS, SURFACE_HIGH);
     painter.circle_stroke(center, KNOB_RADIUS, Stroke::new(1.5, TEXT_MUTED));
 
-    // Background track (full 270° range)
     let track_color =
         Color32::from_rgba_unmultiplied(TEXT_MUTED.r(), TEXT_MUTED.g(), TEXT_MUTED.b(), 70);
     painter.add(arc(
@@ -162,7 +139,6 @@ fn render(ui: &mut Ui, center: Pos2, t: f32, color: Color32, label: &str, value:
         Stroke::new(3.0, track_color),
     ));
 
-    // Value arc
     if t > 0.001 {
         let end_angle = START_ANGLE + SWEEP * t;
         let n = ((60.0 * t) as usize).max(2);
@@ -176,7 +152,6 @@ fn render(ui: &mut Ui, center: Pos2, t: f32, color: Color32, label: &str, value:
         ));
     }
 
-    // Indicator line from center toward current value angle
     let angle = START_ANGLE + SWEEP * t;
     let dir = Vec2::new(angle.cos(), angle.sin());
     painter.line_segment(
@@ -184,7 +159,6 @@ fn render(ui: &mut Ui, center: Pos2, t: f32, color: Color32, label: &str, value:
         Stroke::new(2.0, TEXT_PRIMARY),
     );
 
-    // Labels
     let font = egui::FontId::proportional(10.0);
     painter.text(
         Pos2::new(center.x, center.y + KNOB_RADIUS + 3.0),

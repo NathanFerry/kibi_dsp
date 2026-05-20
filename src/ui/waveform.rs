@@ -10,11 +10,11 @@ use crate::ui::theme::{ACCENT_BLUE, ACCENT_ORANGE, TEXT_MUTED, draw_panel_header
 const BUF_SIZE: usize = 4096;
 
 pub struct Waveform {
-    processed_buf: Vec<f32>,        // fixed-size ring buffer
-    write_head: usize,              // next write position (mod BUF_SIZE)
-    scratch: Vec<f32>,              // pre-allocated ordered read-out buffer
-    orig_points_buf: Vec<[f64; 2]>, // pre-allocated downsample output, capacity 512
-    proc_points_buf: Vec<[f64; 2]>, // pre-allocated downsample output, capacity 512
+    processed_buf: Vec<f32>,
+    write_head: usize,
+    scratch: Vec<f32>,
+    orig_points_buf: Vec<[f64; 2]>,
+    proc_points_buf: Vec<[f64; 2]>,
 }
 
 impl Default for Waveform {
@@ -29,10 +29,6 @@ impl Default for Waveform {
     }
 }
 
-/// Reduce `data` to at most `target_points` points using min/max envelope downsampling.
-/// Each chunk emits two points — [time_ms, min] and [time_ms, max] — preserving waveform shape.
-/// `display_ms` is the total time span the data represents, used to label the X axis.
-/// Writes into `out` (cleared first; existing allocation is reused).
 fn downsample(data: &[f32], target_points: usize, display_ms: f64, out: &mut Vec<[f64; 2]>) {
     out.clear();
     if data.is_empty() || target_points == 0 {
@@ -59,7 +55,6 @@ impl Waveform {
         waveform_queue: &Arc<ArrayQueue<f32>>,
         playing: bool,
     ) {
-        // Only drain when playing — skipping keeps the last frame frozen when paused.
         if playing {
             while let Some(s) = waveform_queue.pop() {
                 self.processed_buf[self.write_head] = s;
@@ -69,14 +64,12 @@ impl Waveform {
 
         let display = ((sample_rate as usize * 100) / 1000).clamp(256, BUF_SIZE);
 
-        // Original: window of `display` samples centred on the cursor.
         let pos = cursor.load(Ordering::Relaxed);
         let half = display / 2;
         let start = pos.saturating_sub(half);
         let end = (start + display).min(samples.len());
         downsample(&samples[start..end], 512, 100.0, &mut self.orig_points_buf);
 
-        // Processed: unwrap the ring buffer into scratch, then downsample.
         let n = display;
         let ring_start = (self.write_head + BUF_SIZE - n) % BUF_SIZE;
         if ring_start + n <= BUF_SIZE {
@@ -88,7 +81,6 @@ impl Waveform {
         }
         downsample(&self.scratch[..n], 512, 100.0, &mut self.proc_points_buf);
 
-        // PlotPoints requires ownership; clone the filled slice (≤ 512 × 16 bytes).
         let orig_points = PlotPoints::new(self.orig_points_buf.clone());
         let proc_points = PlotPoints::new(self.proc_points_buf.clone());
 
@@ -101,7 +93,6 @@ impl Waveform {
             76,
         );
 
-        // Panel header
         draw_panel_header(ui, "WAVEFORM", ACCENT_BLUE, ACCENT_BLUE);
 
         ui.columns(2, |cols| {
@@ -124,7 +115,6 @@ impl Waveform {
                 })
                 .label_formatter(|_, _| String::new())
                 .show(&mut cols[0], |plot_ui| {
-                    // Subtle grid lines
                     for (i, &y) in [-1.0_f64, -0.5, 0.0, 0.5, 1.0].iter().enumerate() {
                         plot_ui.hline(
                             HLine::new(format!("g{i}"), y)
@@ -132,13 +122,11 @@ impl Waveform {
                                 .width(0.5),
                         );
                     }
-                    // Bright center line at y=0
                     plot_ui.hline(
                         HLine::new("center", 0.0)
                             .color(center_line_color)
                             .width(1.0),
                     );
-                    // ORIGINAL label in top-left
                     plot_ui.text(
                         Text::new("orig_label", PlotPoint::new(1.0, 0.90), "ORIGINAL")
                             .color(TEXT_MUTED)
@@ -166,7 +154,6 @@ impl Waveform {
                 })
                 .label_formatter(|_, _| String::new())
                 .show(&mut cols[1], |plot_ui| {
-                    // Subtle grid lines
                     for (i, &y) in [-1.0_f64, -0.5, 0.0, 0.5, 1.0].iter().enumerate() {
                         plot_ui.hline(
                             HLine::new(format!("g{i}"), y)
@@ -174,13 +161,11 @@ impl Waveform {
                                 .width(0.5),
                         );
                     }
-                    // Bright center line at y=0
                     plot_ui.hline(
                         HLine::new("center", 0.0)
                             .color(center_line_color)
                             .width(1.0),
                     );
-                    // PROCESSED label in top-left
                     plot_ui.text(
                         Text::new("proc_label", PlotPoint::new(1.0, 0.90), "PROCESSED")
                             .color(TEXT_MUTED)

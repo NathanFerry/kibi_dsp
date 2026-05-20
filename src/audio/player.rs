@@ -24,7 +24,6 @@ pub struct Player {
     pub cursor: Arc<AtomicUsize>,
     pub playing: Arc<AtomicBool>,
     pub reset_requested: Arc<AtomicBool>,
-    /// Peak output amplitude of the last audio buffer; stores f32 bits via AtomicU32.
     pub vu_level: Arc<AtomicU32>,
     pub sample_count: usize,
     pub sample_rate: u32,

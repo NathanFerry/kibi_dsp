@@ -8,7 +8,6 @@ use crate::ui::theme::{
 
 const N_POINTS: usize = 512;
 
-// Log-spaced tick positions and labels for the frequency axis.
 static LOG_TICKS: &[(f64, &str)] = &[
     (20.0, "20"),
     (50.0, "50"),
@@ -23,7 +22,6 @@ static LOG_TICKS: &[(f64, &str)] = &[
 ];
 
 pub struct BodeView {
-    /// Pre-allocated point buffers: X = log10(Hz), Y = dB or degrees.
     mag_points: Vec<[f64; 2]>,
     phase_points: Vec<[f64; 2]>,
     dirty: bool,
@@ -42,11 +40,6 @@ impl BodeView {
         self.dirty = true;
     }
 
-    /// Render both the magnitude and phase panels.
-    ///
-    /// `tf`        — (b_coeffs, a_coeffs) of the selected processor, or `None`.
-    /// `cutoff_hz` — first parameter value (used to draw the cutoff marker).
-    /// `sample_rate` — audio sample rate in Hz.
     pub fn show(
         &mut self,
         ui: &mut egui::Ui,
@@ -74,25 +67,21 @@ impl BodeView {
         let f_min_log = 20_f64.log10();
         let f_max_log = (sample_rate as f64 / 2.0).min(20_000.0).log10();
 
-        // Glow colors: 20% opacity variants
         let mag_glow = Color32::from_rgba_unmultiplied(
             ACCENT_GREEN.r(), ACCENT_GREEN.g(), ACCENT_GREEN.b(), 51,
         );
         let phase_glow = Color32::from_rgba_unmultiplied(
             ACCENT_PINK.r(), ACCENT_PINK.g(), ACCENT_PINK.b(), 51,
         );
-        // Fill colors: 8% opacity
         let mag_fill = Color32::from_rgba_unmultiplied(
             ACCENT_GREEN.r(), ACCENT_GREEN.g(), ACCENT_GREEN.b(), 20,
         );
-        // Reference line: TEXT_MUTED at 30% opacity
         let ref_line_color = Color32::from_rgba_unmultiplied(
             TEXT_MUTED.r(), TEXT_MUTED.g(), TEXT_MUTED.b(), 76,
         );
 
         draw_panel_header(ui, "BODE DIAGRAM", ACCENT_ORANGE, ACCENT_ORANGE);
 
-        // — Magnitude —
         let mag_pts = PlotPoints::new(self.mag_points.clone());
         let mag_glow_pts = PlotPoints::new(self.mag_points.clone());
         let mag_fill_pts = PlotPoints::new(self.mag_points.clone());
@@ -118,22 +107,18 @@ impl BodeView {
                 }
             })
             .show(ui, |plot_ui| {
-                // 0 dB reference line
                 plot_ui.hline(HLine::new("0dB", 0.0).color(ref_line_color).width(1.0));
-                // Fill under magnitude curve
                 plot_ui.line(
                     Line::new("MagnitudeFill", mag_fill_pts)
                         .color(mag_fill)
                         .fill(0.0)
                         .width(0.0),
                 );
-                // Glow pass
                 plot_ui.line(
                     Line::new("MagnitudeGlow", mag_glow_pts)
                         .color(mag_glow)
                         .width(4.0),
                 );
-                // Main line
                 plot_ui.line(
                     Line::new("Magnitude", mag_pts)
                         .color(ACCENT_GREEN)
@@ -149,7 +134,6 @@ impl BodeView {
                 }
             });
 
-        // — Phase —
         let phase_pts = PlotPoints::new(self.phase_points.clone());
         let phase_glow_pts = PlotPoints::new(self.phase_points.clone());
         Plot::new("bode_phase")
@@ -174,15 +158,12 @@ impl BodeView {
                 }
             })
             .show(ui, |plot_ui| {
-                // 0° reference line
                 plot_ui.hline(HLine::new("0deg", 0.0).color(ref_line_color).width(1.0));
-                // Glow pass
                 plot_ui.line(
                     Line::new("PhaseGlow", phase_glow_pts)
                         .color(phase_glow)
                         .width(4.0),
                 );
-                // Main line
                 plot_ui.line(
                     Line::new("Phase", phase_pts)
                         .color(ACCENT_PINK)
@@ -205,8 +186,6 @@ impl Default for BodeView {
         Self::new()
     }
 }
-
-// ── axis helpers ──────────────────────────────────────────────────────────────
 
 fn fmt_freq_axis(mark: GridMark, _range: &std::ops::RangeInclusive<f64>) -> String {
     let f = 10_f64.powf(mark.value);
